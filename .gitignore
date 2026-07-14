@@ -1,3 +1,9 @@
 CLAUDE.md
 .claude/
 claude-template/
+
+# 대용량 — git 제외
+dataset/*
+!dataset/.gitkeep
+*.pt
+__pycache__/
