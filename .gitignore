@@ -10,3 +10,6 @@ __pycache__/
 # 실행 로그
 logs/*
 !logs/.gitkeep
+
+# 반출 스냅샷
+src/server/snapshots/
