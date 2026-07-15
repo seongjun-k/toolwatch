@@ -3,148 +3,531 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-{% if logged_in %}<meta http-equiv="refresh" content="5">{% endif %}
+{% if logged_in %}<noscript><meta http-equiv="refresh" content="5"></noscript>{% endif %}
 <title>toolwatch 대시보드</title>
 <style>
-  body { font-family: sans-serif; margin: 1rem; background: #f5f5f5; color: #222; }
-  h1 { font-size: 1.4rem; }
-  h2 { font-size: 1.1rem; margin-top: 1.5rem; }
-  table { border-collapse: collapse; width: 100%; max-width: 640px; background: #fff; }
-  th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: center; }
-  th { background: #eee; }
-  .rented { color: #b8860b; font-weight: bold; }
-  .in-stock { color: #2e7d32; }
-  .warn-row { background: #fdecea; color: #b71c1c; font-weight: bold; }
-  img { max-width: 100%; border: 1px solid #ccc; margin-top: 1rem; }
-  form.inline { display: inline; }
-  fieldset { max-width: 640px; margin-top: 1rem; }
-  input[type=text], input[type=password], input[type=number] { padding: 0.3rem; }
-  .error { color: #b71c1c; }
-  @media (max-width: 480px) {
-    table { font-size: 0.8rem; }
+  :root {
+    --bg: #eef1f5;
+    --surface: #ffffff;
+    --surface-2: #f6f8fb;
+    --border: #d3dae3;
+    --border-strong: #b9c3d0;
+    --text: #182230;
+    --muted: #5a6879;
+    --accent: #3b6ea5;
+    --accent-ink: #ffffff;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(20, 30, 45, .06), 0 4px 14px rgba(20, 30, 45, .05);
+
+    --ok: #167a3c;      --ok-bg: #e3f5e8;    --ok-border: #9bd8ac;
+    --warn: #a95a08;    --warn-bg: #fdecd6;  --warn-border: #f2bd7e;
+    --danger: #bb2020;  --danger-bg: #fbe2e0; --danger-border: #f0a3a0;
+
+    --beacon-housing: #1c232e;
+    --lamp-red: #ef4444;
+    --lamp-amber: #f5a623;
+    --lamp-green: #35c65f;
   }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e141c;
+      --surface: #182029;
+      --surface-2: #131b23;
+      --border: #2a3542;
+      --border-strong: #3a4756;
+      --text: #e6edf5;
+      --muted: #93a4b7;
+      --accent: #6ea3dc;
+      --accent-ink: #0e141c;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 6px 20px rgba(0, 0, 0, .30);
+
+      --ok: #57d67e;      --ok-bg: #12301d;     --ok-border: #2c5c3c;
+      --warn: #f4b56b;    --warn-bg: #3a2810;   --warn-border: #6d4c1e;
+      --danger: #f78b86;  --danger-bg: #3a1614; --danger-border: #6d2e2a;
+
+      --beacon-housing: #05090d;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic",
+      "Apple SD Gothic Neo", "Noto Sans KR", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 1rem; }
+  @media (min-width: 760px) { .wrap { padding: 1.5rem; } }
+
+  a { color: var(--accent); }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  /* ---- 상단 바 ---- */
+  .topbar {
+    display: flex; align-items: baseline; flex-wrap: wrap;
+    gap: .5rem 1rem; margin-bottom: 1rem;
+  }
+  .topbar h1 {
+    margin: 0; font-size: 1.3rem; font-weight: 800; letter-spacing: -.01em;
+  }
+  .topbar .mark { color: var(--accent); font-weight: 900; letter-spacing: .02em; }
+  .updated { font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .eyebrow {
+    font-size: .68rem; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 .55rem;
+  }
+
+  /* ---- 카드 ---- */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 1rem;
+  }
+  @media (min-width: 760px) { .card { padding: 1.25rem; } }
+  .card > h2 { margin: 0 0 .75rem; font-size: 1.02rem; font-weight: 700; }
+
+  .grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+  @media (min-width: 780px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+    .span-2 { grid-column: 1 / -1; }
+  }
+
+  /* ---- 히어로 (신호등 상태) ---- */
+  .hero {
+    display: flex; align-items: center; gap: 1.1rem; padding: 1.15rem;
+    border-radius: var(--radius); border: 1px solid var(--border);
+    box-shadow: var(--shadow); position: relative; overflow: hidden;
+  }
+  .hero--green  { background: var(--ok-bg);     border-color: var(--ok-border); }
+  .hero--yellow { background: var(--warn-bg);   border-color: var(--warn-border); }
+  .hero--red    { background: var(--danger-bg); border-color: var(--danger-border); }
+  /* 적색 경보 시 산업용 해저드 스트라이프 상단 띠 */
+  .hero--red::before {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 6px;
+    background: repeating-linear-gradient(-45deg,
+      var(--danger) 0 10px, transparent 10px 20px);
+    opacity: .85;
+  }
+
+  .beacon {
+    flex: none; display: flex; flex-direction: column; gap: .5rem;
+    padding: .65rem .5rem; background: var(--beacon-housing); border-radius: 999px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, .55);
+  }
+  .lamp {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: currentColor; opacity: .16; filter: saturate(.35);
+    transition: opacity .3s, box-shadow .3s, filter .3s;
+  }
+  .lamp.red   { color: var(--lamp-red); }
+  .lamp.amber { color: var(--lamp-amber); }
+  .lamp.green { color: var(--lamp-green); }
+  .lamp.on { opacity: 1; filter: none; box-shadow: 0 0 12px 2px currentColor; }
+  @media (min-width: 760px) { .lamp { width: 30px; height: 30px; } }
+
+  .hero-body { min-width: 0; }
+  .status-word {
+    margin: 0; font-size: 1.85rem; font-weight: 900; letter-spacing: -.02em; line-height: 1.1;
+  }
+  @media (min-width: 760px) { .status-word { font-size: 2.3rem; } }
+  .hero--green  .status-word { color: var(--ok); }
+  .hero--yellow .status-word { color: var(--warn); }
+  .hero--red    .status-word { color: var(--danger); }
+  .status-desc { margin: .2rem 0 0; color: var(--muted); font-size: .92rem; }
+  .status-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .7rem; }
+  .chip {
+    font-size: .78rem; font-weight: 600; padding: .2rem .55rem; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--border-strong);
+    color: var(--text); font-variant-numeric: tabular-nums;
+  }
+  .chip b { font-weight: 800; }
+  .chip.chip-warn { color: var(--danger); border-color: var(--danger-border); }
+
+  /* ---- 표 ---- */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td {
+    padding: .55rem .7rem; text-align: left;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  thead th {
+    font-size: .72rem; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--border-strong);
+  }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: none; }
+  .empty { color: var(--muted); text-align: center; padding: 1.1rem; }
+
+  .cnt-rented { color: var(--warn); font-weight: 700; }
+  .cnt-stock  { color: var(--muted); }
+
+  tr.row-danger td, tr.row-danger th { background: var(--danger-bg); }
+  tr.row-warn td,   tr.row-warn th   { background: var(--warn-bg); }
+
+  /* 상태 / 이벤트 배지 */
+  .badge {
+    display: inline-block; font-size: .74rem; font-weight: 700;
+    letter-spacing: .03em; padding: .12rem .5rem; border-radius: 6px;
+    border: 1px solid transparent; white-space: nowrap;
+  }
+  .b-ok     { color: var(--ok);     background: var(--ok-bg);     border-color: var(--ok-border); }
+  .b-warn   { color: var(--warn);   background: var(--warn-bg);   border-color: var(--warn-border); }
+  .b-danger { color: var(--danger); background: var(--danger-bg); border-color: var(--danger-border); }
+  .b-neutral{ color: var(--muted);  background: var(--surface-2); border-color: var(--border); }
+
+  /* ---- 버튼 / 폼 ---- */
+  button, .btn {
+    font: inherit; cursor: pointer; min-height: 44px; padding: .5rem 1rem;
+    border-radius: 10px; border: 1px solid var(--accent);
+    background: var(--accent); color: var(--accent-ink); font-weight: 600;
+  }
+  button:hover, .btn:hover { filter: brightness(1.06); }
+  button.ghost { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
+  button.danger {
+    background: var(--surface); color: var(--danger); border-color: var(--danger-border);
+    min-height: 38px; padding: .35rem .8rem;
+  }
+  input[type=text], input[type=password], input[type=number] {
+    font: inherit; min-height: 44px; padding: .5rem .65rem;
+    border: 1px solid var(--border-strong); border-radius: 10px;
+    background: var(--surface); color: var(--text); max-width: 100%;
+  }
+  input::placeholder { color: var(--muted); }
+
+  .frame-img {
+    display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border);
+  }
+
+  /* ---- 설정 ---- */
+  .settings { margin-top: 1.75rem; }
+  .settings > h2 {
+    font-size: 1.05rem; font-weight: 700; margin: 0 0 .85rem;
+    padding-top: 1.25rem; border-top: 1px solid var(--border);
+  }
+  .set-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+  @media (min-width: 780px) {
+    .set-grid { grid-template-columns: repeat(2, 1fr); }
+    .set-grid .span-2 { grid-column: 1 / -1; }
+  }
+  .field-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem; }
+  .field { display: flex; flex-direction: column; gap: .3rem; }
+  .field > span { font-size: .82rem; color: var(--muted); font-weight: 600; }
+  .field input[type=number] { width: 6rem; }
+  .stock-list { display: flex; flex-wrap: wrap; gap: .75rem 1rem; margin-bottom: .9rem; }
+  .settings table { margin-bottom: .9rem; }
+
+  /* ---- 로그인 ---- */
+  .login-wrap { min-height: 70vh; display: flex; align-items: center; justify-content: center; }
+  .login-card { width: 100%; max-width: 360px; text-align: center; }
+  .login-card .beacon-inline {
+    display: inline-flex; flex-direction: row; gap: .4rem; margin-bottom: 1rem;
+    padding: .45rem .6rem; background: var(--beacon-housing); border-radius: 999px;
+  }
+  .login-card .beacon-inline .lamp { width: 18px; height: 18px; opacity: 1; filter: none; }
+  .login-card h1 { font-size: 1.4rem; margin: 0 0 .3rem; }
+  .login-sub { color: var(--muted); font-size: .9rem; margin: 0 0 1.5rem; }
+  .login-form { display: flex; flex-direction: column; gap: .8rem; text-align: left; }
+  .login-form label { display: flex; flex-direction: column; gap: .35rem; font-size: .88rem; font-weight: 600; }
+  .login-form input, .login-form button { width: 100%; }
+  .error {
+    color: var(--danger); background: var(--danger-bg);
+    border: 1px solid var(--danger-border); border-radius: 8px;
+    padding: .5rem .7rem; font-size: .88rem; margin: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
-<h1>toolwatch 대시보드</h1>
 
 {% if not logged_in %}
-<form method="post" action="{{ url_for('login') }}">
-  <label>비밀번호: <input type="password" name="password"></label>
-  <button type="submit">로그인</button>
-</form>
-{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<main class="wrap login-wrap">
+  <section class="login-card" aria-labelledby="login-h">
+    <div class="beacon-inline" aria-hidden="true">
+      <span class="lamp red"></span>
+      <span class="lamp amber"></span>
+      <span class="lamp green"></span>
+    </div>
+    <h1 id="login-h"><span class="mark">toolwatch</span> 대시보드</h1>
+    <p class="login-sub">연구실 공구 반납 감시 시스템</p>
+    <form class="login-form" method="post" action="{{ url_for('login') }}">
+      <label>비밀번호:
+        <input type="password" name="password" autocomplete="current-password" autofocus>
+      </label>
+      <button type="submit">로그인</button>
+      {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    </form>
+  </section>
+</main>
 
 {% else %}
-<p>최종 갱신: {{ last_updated or "아직 없음" }}</p>
-
-<h2>공구 상태</h2>
-<table>
-  <tr><th>공구</th><th>등록 재고</th><th>현재 검출</th><th>대여 중</th></tr>
-  {% for tool, info in tool_status.items() %}
-  <tr>
-    <td>{{ tool }}</td>
-    <td>{{ info.registered }}</td>
-    <td>{{ info.detected }}</td>
-    <td class="{{ 'rented' if info.rented > 0 else 'in-stock' }}">{{ info.rented }}</td>
-  </tr>
-  {% else %}
-  <tr><td colspan="4">아직 수신된 프레임이 없습니다</td></tr>
+{# ---- 신호등 색 파생: 적 > 황 > 녹 (계획서 §3.2) ---- #}
+{% set ns = namespace(red=false, yellow=false, rented_count=0, warn_count=0) %}
+{% for tool, items in rented.items() %}
+  {% for item in items %}
+    {% set ns.rented_count = ns.rented_count + 1 %}
+    {% if item.overdue or item.unauth %}
+      {% set ns.red = true %}
+      {% set ns.warn_count = ns.warn_count + 1 %}
+    {% endif %}
   {% endfor %}
-</table>
+{% endfor %}
+{% for tool, info in tool_status.items() %}
+  {% if info.rented > 0 %}{% set ns.yellow = true %}{% endif %}
+{% endfor %}
+{% set light = 'red' if ns.red else ('yellow' if ns.yellow else 'green') %}
 
-<h2>대여 중 상세</h2>
-<table>
-  <tr><th>공구</th><th>대여자</th><th>UID</th><th>경과(초)</th><th>상태</th></tr>
-  {% for tool, items in rented.items() %}
-    {% for item in items %}
-    <tr class="{{ 'warn-row' if item.overdue or item.unauth else '' }}">
-      <td>{{ tool }}</td>
-      <td>{{ item.name }}</td>
-      <td>{{ item.uid }}</td>
-      <td>{{ item.elapsed_sec }}</td>
-      <td>{% if item.unauth %}미확인{% elif item.overdue %}미반납{% else %}정상{% endif %}</td>
-    </tr>
-    {% endfor %}
-  {% else %}
-  <tr><td colspan="5">대여 중인 공구가 없습니다</td></tr>
-  {% endfor %}
-</table>
+<div class="wrap">
+  <header class="topbar">
+    <h1><span class="mark">toolwatch</span> 대시보드</h1>
+  </header>
 
-<form method="post" action="{{ url_for('control') }}" class="inline">
-  <input type="hidden" name="action" value="clear_warnings">
-  <button type="submit">경고 수동 해제</button>
-</form>
+  <main id="live">
+    <section class="hero hero--{{ light }}" aria-live="polite" aria-label="전체 상태">
+      <div class="beacon" aria-hidden="true">
+        <span class="lamp red {{ 'on' if light == 'red' }}"></span>
+        <span class="lamp amber {{ 'on' if light == 'yellow' }}"></span>
+        <span class="lamp green {{ 'on' if light == 'green' }}"></span>
+      </div>
+      <div class="hero-body">
+        <p class="eyebrow">현재 상태</p>
+        <p class="status-word">
+          {% if light == 'red' %}경고{% elif light == 'yellow' %}대여중{% else %}정상{% endif %}
+        </p>
+        <p class="status-desc">
+          {% if light == 'red' %}미확인 또는 미반납 공구가 있습니다. 확인이 필요합니다.
+          {% elif light == 'yellow' %}대여 중인 공구가 있습니다.
+          {% elif not last_updated %}프레임 수신 대기 중입니다.
+          {% else %}모든 공구가 정상 상태입니다.{% endif %}
+        </p>
+        <div class="status-chips">
+          <span class="chip">대여 중 <b>{{ ns.rented_count }}</b></span>
+          {% if ns.warn_count > 0 %}<span class="chip chip-warn">경고 <b>{{ ns.warn_count }}</b></span>{% endif %}
+          <span class="chip updated">최종 갱신: {{ last_updated or "아직 없음" }}</span>
+        </div>
+      </div>
+    </section>
 
-{% if latest_frame_b64 %}
-<h2>최신 프레임</h2>
-<img src="data:image/jpeg;base64,{{ latest_frame_b64 }}" alt="최신 프레임">
-{% endif %}
+    <div class="grid" style="margin-top:1rem;">
+      <section class="card" aria-labelledby="h-status">
+        <h2 id="h-status">공구 상태</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">공구</th>
+                <th scope="col" class="num">등록 재고</th>
+                <th scope="col" class="num">현재 검출</th>
+                <th scope="col" class="num">대여 중</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for tool, info in tool_status.items() %}
+              <tr>
+                <th scope="row">{{ tool }}</th>
+                <td class="num">{{ info.registered }}</td>
+                <td class="num">{{ info.detected }}</td>
+                <td class="num {{ 'cnt-rented' if info.rented > 0 else 'cnt-stock' }}">{{ info.rented }}</td>
+              </tr>
+              {% else %}
+              <tr><td class="empty" colspan="4">아직 수신된 프레임이 없습니다</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-<h2>이벤트 이력 (최근)</h2>
-<table>
-  <tr><th>시각</th><th>이벤트</th><th>공구</th><th>UID</th><th>이름</th><th>스냅샷</th></tr>
-  {% for row in events %}
-  <tr class="{{ 'warn-row' if row['이벤트'] in ('UNAUTH', 'OVERDUE') else '' }}">
-    <td>{{ row['시각'] }}</td>
-    <td>{{ row['이벤트'] }}</td>
-    <td>{{ row['공구'] }}</td>
-    <td>{{ row['UID'] }}</td>
-    <td>{{ row['이름'] }}</td>
-    <td>{% if row.snapshot_filename %}<a href="{{ url_for('snapshot_file', filename=row.snapshot_filename) }}" target="_blank">보기</a>{% endif %}</td>
-  </tr>
-  {% else %}
-  <tr><td colspan="6">이력 없음</td></tr>
-  {% endfor %}
-</table>
-
-<h2>설정 변경</h2>
-<fieldset>
-  <legend>등록 재고</legend>
-  <form method="post" action="{{ url_for('control') }}">
-    <input type="hidden" name="action" value="stock">
-    {% for tool, count in config.registered_stock.items() %}
-    <label>{{ tool }}: <input type="number" min="0" name="stock_{{ tool }}" value="{{ count }}" style="width:4rem;"></label>
-    {% endfor %}
-    <button type="submit">저장</button>
-  </form>
-</fieldset>
-
-<fieldset>
-  <legend>미반납 임계 시간(초)</legend>
-  <form method="post" action="{{ url_for('control') }}">
-    <input type="hidden" name="action" value="overdue_sec">
-    <input type="number" min="1" name="overdue_sec" value="{{ config.overdue_sec }}">
-    <button type="submit">저장</button>
-  </form>
-</fieldset>
-
-<fieldset>
-  <legend>RFID UID ↔ 이름</legend>
-  <table>
-    <tr><th>UID</th><th>이름</th><th></th></tr>
-    {% for uid, name in config.uid_names.items() %}
-    <tr>
-      <td>{{ uid }}</td>
-      <td>{{ name }}</td>
-      <td>
-        <form method="post" action="{{ url_for('control') }}" class="inline">
-          <input type="hidden" name="action" value="uid_delete">
-          <input type="hidden" name="uid" value="{{ uid }}">
-          <button type="submit">삭제</button>
+      <section class="card" aria-labelledby="h-rented">
+        <h2 id="h-rented">대여 중 상세</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">공구</th>
+                <th scope="col">대여자</th>
+                <th scope="col">UID</th>
+                <th scope="col" class="num">경과(초)</th>
+                <th scope="col">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for tool, items in rented.items() %}
+                {% for item in items %}
+                <tr class="{{ 'row-danger' if item.unauth else ('row-warn' if item.overdue else '') }}">
+                  <th scope="row">{{ tool }}</th>
+                  <td>{{ item.name }}</td>
+                  <td>{{ item.uid }}</td>
+                  <td class="num">{{ item.elapsed_sec }}</td>
+                  <td>
+                    {% if item.unauth %}<span class="badge b-danger">미확인</span>
+                    {% elif item.overdue %}<span class="badge b-warn">미반납</span>
+                    {% else %}<span class="badge b-ok">정상</span>{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              {% else %}
+              <tr><td class="empty" colspan="5">대여 중인 공구가 없습니다</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <form method="post" action="{{ url_for('control') }}" style="margin-top:.9rem;">
+          <input type="hidden" name="action" value="clear_warnings">
+          <button type="submit" class="ghost">경고 수동 해제</button>
         </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </table>
-  <form method="post" action="{{ url_for('control') }}">
-    <input type="hidden" name="action" value="uid_add">
-    <input type="text" name="uid" placeholder="UID">
-    <input type="text" name="name" placeholder="이름">
-    <button type="submit">등록</button>
-  </form>
-</fieldset>
+      </section>
 
+      {% if latest_frame_b64 %}
+      <section class="card" aria-labelledby="h-frame">
+        <h2 id="h-frame">최신 프레임</h2>
+        <img class="frame-img" src="data:image/jpeg;base64,{{ latest_frame_b64 }}" alt="가장 최근 수신된 카메라 프레임">
+      </section>
+      {% endif %}
+
+      <section class="card span-2" aria-labelledby="h-events">
+        <h2 id="h-events">이벤트 이력 (최근)</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">시각</th>
+                <th scope="col">이벤트</th>
+                <th scope="col">공구</th>
+                <th scope="col">UID</th>
+                <th scope="col">이름</th>
+                <th scope="col">스냅샷</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in events %}
+              {% set ev = row['이벤트'] %}
+              <tr class="{{ 'row-danger' if ev == 'UNAUTH' else ('row-warn' if ev == 'OVERDUE' else '') }}">
+                <td>{{ row['시각'] }}</td>
+                <td>
+                  {% if ev == 'UNAUTH' %}<span class="badge b-danger">UNAUTH</span>
+                  {% elif ev == 'OVERDUE' %}<span class="badge b-warn">OVERDUE</span>
+                  {% elif ev == 'IN' %}<span class="badge b-ok">IN</span>
+                  {% else %}<span class="badge b-neutral">{{ ev }}</span>{% endif %}
+                </td>
+                <td>{{ row['공구'] }}</td>
+                <td>{{ row['UID'] }}</td>
+                <td>{{ row['이름'] }}</td>
+                <td>{% if row.snapshot_filename %}<a href="{{ url_for('snapshot_file', filename=row.snapshot_filename) }}" target="_blank" rel="noopener">보기</a>{% endif %}</td>
+              </tr>
+              {% else %}
+              <tr><td class="empty" colspan="6">이력 없음</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  {# 텍스트 입력이 있는 설정 폼은 #live 밖(정적 영역)에 둔다 — 5초 라이브 교체 시 입력 유지 #}
+  <section class="settings" aria-labelledby="h-settings">
+    <h2 id="h-settings">설정 변경</h2>
+    <div class="set-grid">
+      <div class="card">
+        <p class="eyebrow">등록 재고</p>
+        <form method="post" action="{{ url_for('control') }}">
+          <input type="hidden" name="action" value="stock">
+          <div class="stock-list">
+            {% for tool, count in config.registered_stock.items() %}
+            <label class="field">
+              <span>{{ tool }}</span>
+              <input type="number" min="0" inputmode="numeric" name="stock_{{ tool }}" value="{{ count }}">
+            </label>
+            {% endfor %}
+          </div>
+          <button type="submit">저장</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">미반납 임계 시간(초)</p>
+        <form method="post" action="{{ url_for('control') }}">
+          <input type="hidden" name="action" value="overdue_sec">
+          <div class="field-row">
+            <label class="field">
+              <span>임계값</span>
+              <input type="number" min="1" inputmode="numeric" name="overdue_sec" value="{{ config.overdue_sec }}">
+            </label>
+            <button type="submit">저장</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card span-2">
+        <p class="eyebrow">RFID UID ↔ 이름</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th scope="col">UID</th><th scope="col">이름</th><th scope="col"><span class="sr-only">동작</span></th></tr>
+            </thead>
+            <tbody>
+              {% for uid, name in config.uid_names.items() %}
+              <tr>
+                <th scope="row">{{ uid }}</th>
+                <td>{{ name }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('control') }}">
+                    <input type="hidden" name="action" value="uid_delete">
+                    <input type="hidden" name="uid" value="{{ uid }}">
+                    <button type="submit" class="danger">삭제</button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td class="empty" colspan="3">등록된 UID가 없습니다</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <form method="post" action="{{ url_for('control') }}">
+          <input type="hidden" name="action" value="uid_add">
+          <div class="field-row">
+            <label class="field"><span>UID</span><input type="text" name="uid" placeholder="예: 04A2B1C3"></label>
+            <label class="field"><span>이름</span><input type="text" name="name" placeholder="예: 홍길동"></label>
+            <button type="submit">등록</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  // 라이브 갱신: 5초마다 #live 영역만 교체(흰 깜빡임 없음). 실패 시 직전 화면 유지.
+  (function () {
+    function refresh() {
+      fetch(window.location.href, { credentials: "same-origin" })
+        .then(function (res) { if (!res.ok) return null; return res.text(); })
+        .then(function (html) {
+          if (!html) return;
+          var doc = new DOMParser().parseFromString(html, "text/html");
+          var fresh = doc.getElementById("live");
+          var current = document.getElementById("live");
+          if (fresh && current) current.replaceWith(fresh);
+        })
+        .catch(function () { /* 네트워크 오류 시 아무 것도 안 함 */ });
+    }
+    setInterval(refresh, 5000);
+  })();
+</script>
 {% endif %}
 </body>
 </html>

@@ -34,9 +34,13 @@ def _rfid_loop() -> None:
     global _latest_uid
     reader = SimpleMFRC522()
     while True:
-        uid, _ = reader.read()  # 태그가 태깅될 때까지 블로킹 — 전용 스레드라 메인 루프에 영향 없음
-        with _uid_lock:
-            _latest_uid = str(uid)
+        try:
+            uid, _ = reader.read()  # 태그가 태깅될 때까지 블로킹 — 전용 스레드라 메인 루프에 영향 없음
+            with _uid_lock:
+                _latest_uid = str(uid)
+        except Exception:
+            # SPI/배선 일시 오류로 스레드가 죽으면 이후 모든 반출이 미확인으로 오경고되므로 재시도
+            time.sleep(1)
 
 
 def _peek_uid() -> str:
@@ -94,8 +98,9 @@ def run() -> None:
                 result = resp.json()
                 _consume_uid(uid)
                 hw.apply(result["light"], result["buzzer"])
-            except (requests.RequestException, ValueError, KeyError):
-                # 네트워크 단절/응답 이상 시 직전 경고 상태 유지, 다음 주기에 재시도 (계획서 3.6)
+            except Exception:
+                # 카메라/GPIO 등 일시 오류 하나로 감시 루프 전체가 죽으면 안 됨(계획서 3.6).
+                # 직전 경고 상태 유지, 다음 주기에 재시도. KeyboardInterrupt는 Exception이 아니므로 종료는 여전히 가능
                 pass
             elapsed = time.monotonic() - start
             time.sleep(max(0.0, interval - elapsed))

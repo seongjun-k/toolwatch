@@ -9,6 +9,7 @@ import csv
 import io
 import json
 import sys
+import threading
 import time
 from datetime import datetime
 from functools import wraps
@@ -40,7 +41,10 @@ state = {
     "rfid_session": None,  # {"uid":..., "expires_at":...} or None
 }
 _debounce_state = {}
+_session_at_streak = {}  # 공구별 스트릭 시작 시점의 rfid_session 스냅샷 (F6: 확정 시점이 아닌 시작 시점 세션으로 귀속)
 _model = None  # ultralytics 모델 캐시, 최초 추론 시점까지 지연 로딩
+# ponytail: 전역 락 — 요청 빈도(3초 주기+대시보드)가 낮아 충분, 병목 시 세분화
+_state_lock = threading.Lock()
 
 
 def judge_tools(detected_counts, registered_stock, debounce_frames, debounce_state):
@@ -60,7 +64,11 @@ def judge_tools(detected_counts, registered_stock, debounce_frames, debounce_sta
         streak = prev["streak"] + 1 if rented_now == prev["candidate"] else 1
         confirmed = prev["confirmed"]
 
-        if streak >= debounce_frames and rented_now != confirmed:
+        if confirmed is None:
+            # 재고 변경 직후 재기준선 대기 중 — 이벤트 없이 streak 도달 시점에 조용히 채택
+            if streak >= debounce_frames:
+                confirmed = rented_now
+        elif streak >= debounce_frames and rented_now != confirmed:
             delta = rented_now - confirmed
             event_type = "OUT" if delta > 0 else "IN"
             events.extend({"tool": tool, "type": event_type} for _ in range(abs(delta)))
@@ -85,11 +93,13 @@ def resolve_session(session_, uid, now, session_sec):
 
 
 def attribute_out(session_, uid_names):
-    """순수 함수: 유효한 세션이면 (uid, 이름), 없으면(=미확인 반출) (None, "")."""
+    """순수 함수: 유효한 세션이면 (uid, 이름, unauth=uid_names 미등록 여부), 세션 없으면(=미확인 반출) (None, "", True).
+    등록되지 않은 UID로 태깅된 경우도 신원을 확인할 수 없으므로 미확인 반출로 취급한다 (F7)."""
     if session_ is None:
-        return None, ""
+        return None, "", True
     uid = session_["uid"]
-    return uid, uid_names.get(uid, "")
+    name = uid_names.get(uid, "")
+    return uid, name, uid not in uid_names
 
 
 def check_overdue(rented_by_tool, overdue_sec, now):
@@ -108,19 +118,21 @@ def check_overdue(rented_by_tool, overdue_sec, now):
                 events.append({"tool": tool, "uid": item["uid"], "name": item["name"]})
                 item["overdue_logged"] = True
             new_items.append(item)
-        new_rented[tool] = new_items
+        if new_items:  # F9: 반납으로 빈 리스트가 된 공구는 잔류시키지 않음
+            new_rented[tool] = new_items
     return new_rented, events
 
 
-def decide_response(tool_status, rented_items=(), now=0, overdue_sec=float("inf")):
+def decide_response(tool_status, rented_items=()):
     """light/buzzer 판정을 모아두는 단일 지점 (우선순위 적 > 황 > 녹, 계획서 §3.2).
 
     red: 해제되지 않은 미반납 초과 또는 미확인 반출이 하나라도 있을 때.
     buzzer: 미확인 반출이면 unauth, 아니면 미반납 초과면 overdue, 아니면 off (둘 다면 unauth 우선).
+    overdue/unauth 판정은 check_overdue/attribute_out이 기록해 둔 플래그를 그대로 쓴다 (F8: 재계산 금지, 단일 판정 지점).
     """
     active = [r for r in rented_items if not r["cleared"]]
-    has_unauth = any(r["uid"] == "" for r in active)
-    has_overdue = any(now - r["out_time"] > overdue_sec for r in active)
+    has_unauth = any(r["unauth"] for r in active)
+    has_overdue = any(r["overdue_logged"] for r in active)
 
     if has_unauth or has_overdue:
         light = "red"
@@ -215,81 +227,91 @@ def receive_frame():
     frame_bytes = image_file.read()
     uid = request.form.get("uid", "")
 
-    now = time.time()
-    state["rfid_session"] = resolve_session(state["rfid_session"], uid, now, CONFIG["rfid_session_sec"])
+    with _state_lock:
+        now = time.time()
+        state["rfid_session"] = resolve_session(state["rfid_session"], uid, now, CONFIG["rfid_session_sec"])
 
-    detected_counts = detect_tools(frame_bytes)
+        detected_counts = detect_tools(frame_bytes)
 
-    global _debounce_state
-    _debounce_state, events = judge_tools(
-        detected_counts, CONFIG["registered_stock"], CONFIG["debounce_frames"], _debounce_state
-    )
+        global _debounce_state
+        _debounce_state, events = judge_tools(
+            detected_counts, CONFIG["registered_stock"], CONFIG["debounce_frames"], _debounce_state
+        )
 
-    for event in events:
-        tool = event["tool"]
-        if event["type"] == "OUT":
-            snapshot_path = save_snapshot(tool, frame_bytes)
-            attributed_uid, name = attribute_out(state["rfid_session"], CONFIG["uid_names"])
-            append_event("OUT", tool, uid=attributed_uid or "", name=name, snapshot_path=snapshot_path)
-            if attributed_uid is None:
-                # OUT 행은 그대로 두고 미확인 반출만 별도 행으로 추가 기록 (대시보드 이력에서 구분용)
-                append_event("UNAUTH", tool, snapshot_path=snapshot_path)
-            state["rented"].setdefault(tool, []).append({
-                "uid": attributed_uid or "", "name": name, "out_time": now,
-                "cleared": False, "overdue_logged": False,
-            })
-        else:  # IN — 같은 공구 여러 개는 큐라 오래된 것부터 반납 처리
-            queue = state["rented"].get(tool, [])
-            item = queue.pop(0) if queue else {"uid": "", "name": ""}
-            append_event("IN", tool, uid=item.get("uid", ""), name=item.get("name", ""))
+        # F6: 새로 스트릭이 시작된(=1) 공구는 이번 시점의 세션을 확정 귀속용으로 스냅샷
+        # (디바운스 지연 약 9초 중 다른 사람이 태깅하면 확정 시점 세션으로는 오귀속되므로 시작 시점 세션 사용)
+        for tool, d_state in _debounce_state.items():
+            if d_state["streak"] == 1:
+                _session_at_streak[tool] = state["rfid_session"]
 
-    state["rented"], overdue_events = check_overdue(state["rented"], CONFIG["overdue_sec"], now)
-    for ev in overdue_events:
-        append_event("OVERDUE", ev["tool"], uid=ev["uid"], name=ev["name"])
+        for event in events:
+            tool = event["tool"]
+            if event["type"] == "OUT":
+                snapshot_path = save_snapshot(tool, frame_bytes)
+                attributed_uid, name, unauth = attribute_out(_session_at_streak.get(tool), CONFIG["uid_names"])
+                append_event("OUT", tool, uid=attributed_uid or "", name=name, snapshot_path=snapshot_path)
+                if unauth:
+                    # OUT 행은 그대로 두고 미확인 반출만 별도 행으로 추가 기록 (대시보드 이력에서 구분용)
+                    append_event("UNAUTH", tool, uid=attributed_uid or "", snapshot_path=snapshot_path)
+                state["rented"].setdefault(tool, []).append({
+                    "uid": attributed_uid or "", "name": name, "out_time": now,
+                    "cleared": False, "overdue_logged": False, "unauth": unauth,
+                })
+            else:  # IN — 같은 공구 여러 개는 큐라 오래된 것부터 반납 처리
+                queue = state["rented"].get(tool, [])
+                item = queue.pop(0) if queue else {"uid": "", "name": ""}
+                if not queue:
+                    state["rented"].pop(tool, None)  # F9: 비면 잔류시키지 않음
+                append_event("IN", tool, uid=item.get("uid", ""), name=item.get("name", ""))
 
-    state["latest_frame"] = frame_bytes
-    state["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    state["tool_status"] = {
-        tool: {
-            "registered": registered,
-            "detected": detected_counts.get(tool, 0),
-            "rented": _debounce_state[tool]["confirmed"],
+        state["rented"], overdue_events = check_overdue(state["rented"], CONFIG["overdue_sec"], now)
+        for ev in overdue_events:
+            append_event("OVERDUE", ev["tool"], uid=ev["uid"], name=ev["name"])
+
+        state["latest_frame"] = frame_bytes
+        state["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        state["tool_status"] = {
+            tool: {
+                "registered": registered,
+                "detected": detected_counts.get(tool, 0),
+                "rented": _debounce_state[tool]["confirmed"] or 0,
+            }
+            for tool, registered in CONFIG["registered_stock"].items()
         }
-        for tool, registered in CONFIG["registered_stock"].items()
-    }
 
-    rented_items = [item for items in state["rented"].values() for item in items]
-    return jsonify(decide_response(state["tool_status"], rented_items, now, CONFIG["overdue_sec"]))
+        rented_items = [item for items in state["rented"].values() for item in items]
+        return jsonify(decide_response(state["tool_status"], rented_items))
 
 
 @app.route("/")
 @login_required
 def dashboard():
-    now = time.time()
-    rented_view = {
-        tool: [
-            {
-                "uid": item["uid"] or "미확인",
-                "name": item["name"] or "-",
-                "elapsed_sec": int(now - item["out_time"]),
-                "overdue": not item["cleared"] and now - item["out_time"] > CONFIG["overdue_sec"],
-                "unauth": not item["cleared"] and item["uid"] == "",
-            }
-            for item in items
-        ]
-        for tool, items in state["rented"].items()
-    }
-    latest_frame_b64 = base64.b64encode(state["latest_frame"]).decode() if state["latest_frame"] else None
-    return render_template(
-        "dashboard.html",
-        logged_in=True,
-        tool_status=state["tool_status"],
-        rented=rented_view,
-        events=read_recent_events(),
-        latest_frame_b64=latest_frame_b64,
-        last_updated=state["last_updated"],
-        config=CONFIG,
-    )
+    with _state_lock:
+        now = time.time()
+        rented_view = {
+            tool: [
+                {
+                    "uid": item["uid"] or "미확인",
+                    "name": item["name"] or "-",
+                    "elapsed_sec": int(now - item["out_time"]),
+                    "overdue": not item["cleared"] and item["overdue_logged"],
+                    "unauth": not item["cleared"] and item["unauth"],
+                }
+                for item in items
+            ]
+            for tool, items in state["rented"].items()
+        }
+        latest_frame_b64 = base64.b64encode(state["latest_frame"]).decode() if state["latest_frame"] else None
+        return render_template(
+            "dashboard.html",
+            logged_in=True,
+            tool_status=state["tool_status"],
+            rented=rented_view,
+            events=read_recent_events(),
+            latest_frame_b64=latest_frame_b64,
+            last_updated=state["last_updated"],
+            config=CONFIG,
+        )
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -306,32 +328,37 @@ def login():
 @app.route("/control", methods=["POST"])
 @login_required
 def control():
-    action = request.form.get("action")
-    if action == "stock":
-        for tool in CONFIG["registered_stock"]:
-            value = request.form.get(f"stock_{tool}")
-            if value is not None and value.isdigit():
-                CONFIG["registered_stock"][tool] = int(value)
-        save_config()
-    elif action == "overdue_sec":
-        value = request.form.get("overdue_sec", "")
-        if value.isdigit():
-            CONFIG["overdue_sec"] = int(value)
-        save_config()
-    elif action == "clear_warnings":
-        # 미확인/미반납 경고만 끈다 — 대여 자체는 유지, 반납은 여전히 IN 검출로만 확정
-        for items in state["rented"].values():
-            for item in items:
-                item["cleared"] = True
-    elif action == "uid_add":
-        uid = request.form.get("uid", "").strip()
-        name = request.form.get("name", "").strip()
-        if uid and name:
-            CONFIG["uid_names"][uid] = name
+    global _debounce_state
+    with _state_lock:
+        action = request.form.get("action")
+        if action == "stock":
+            for tool in CONFIG["registered_stock"]:
+                value = request.form.get(f"stock_{tool}")
+                if value is not None and value.isdigit() and int(value) != CONFIG["registered_stock"][tool]:
+                    CONFIG["registered_stock"][tool] = int(value)
+                    # F2: 재고 수량이 실제로 바뀐 공구는 디바운스를 재기준선 대기 상태로 리셋 (유령 이벤트 방지)
+                    _debounce_state[tool] = {"confirmed": None, "candidate": 0, "streak": 0}
             save_config()
-    elif action == "uid_delete":
-        CONFIG["uid_names"].pop(request.form.get("uid", ""), None)
-        save_config()
+        elif action == "overdue_sec":
+            value = request.form.get("overdue_sec", "")
+            if value.isdigit():
+                CONFIG["overdue_sec"] = int(value)
+            save_config()
+        elif action == "clear_warnings":
+            # 미확인/미반납 경고만 끈다 — 대여 자체는 유지, 반납은 여전히 IN 검출로만 확정
+            for items in state["rented"].values():
+                for item in items:
+                    if item["unauth"] or item["overdue_logged"]:
+                        item["cleared"] = True
+        elif action == "uid_add":
+            uid = request.form.get("uid", "").strip()
+            name = request.form.get("name", "").strip()
+            if uid and name:
+                CONFIG["uid_names"][uid] = name
+                save_config()
+        elif action == "uid_delete":
+            CONFIG["uid_names"].pop(request.form.get("uid", ""), None)
+            save_config()
     return redirect(url_for("dashboard"))
 
 
@@ -379,47 +406,65 @@ def _selfcheck():
 
     # --- S4: RFID 세션 중 OUT -> 귀속 / 세션 만료 후 OUT -> 미확인 ---
     sess = resolve_session(None, "U1", now=0, session_sec=30)
-    assert attribute_out(sess, {"U1": "홍길동"}) == ("U1", "홍길동")
+    assert attribute_out(sess, {"U1": "홍길동"}) == ("U1", "홍길동", False)
     sess_still_valid = resolve_session(sess, "", now=10, session_sec=30)  # 태그 없이 시간만 흐름, 아직 유효
-    assert attribute_out(sess_still_valid, {"U1": "홍길동"}) == ("U1", "홍길동")
+    assert attribute_out(sess_still_valid, {"U1": "홍길동"}) == ("U1", "홍길동", False)
     sess_expired = resolve_session(sess, "", now=31, session_sec=30)  # 30초 경과 -> 만료
     assert sess_expired is None
-    assert attribute_out(sess_expired, {"U1": "홍길동"}) == (None, "")
+    assert attribute_out(sess_expired, {"U1": "홍길동"}) == (None, "", True)
+
+    # --- F7: uid_names에 없는 UID로 태깅 -> 세션은 유효해도 미확인 반출 취급 ---
+    sess_unregistered = resolve_session(None, "U9", now=0, session_sec=30)
+    assert attribute_out(sess_unregistered, {"U1": "홍길동"}) == ("U9", "", True)
 
     # --- S4: 세션 중 다른 UID 태그 -> 마지막 태그 우선(기존 세션 즉시 종료) ---
     sess_switch = resolve_session(sess, "U2", now=5, session_sec=30)
     assert sess_switch == {"uid": "U2", "expires_at": 35}
 
     # --- S4: 미반납 임계 초과 -> OVERDUE 1회만 발생 (중복 기록 없음) ---
-    rented = {"스패너": [{"uid": "U1", "name": "홍길동", "out_time": 0, "cleared": False, "overdue_logged": False}]}
+    rented = {"스패너": [{"uid": "U1", "name": "홍길동", "out_time": 0, "cleared": False, "overdue_logged": False, "unauth": False}]}
     rented, overdue_events = check_overdue(rented, overdue_sec=7200, now=7300)
     assert overdue_events == [{"tool": "스패너", "uid": "U1", "name": "홍길동"}]
     rented, overdue_events_again = check_overdue(rented, overdue_sec=7200, now=7400)  # 이미 기록됨 -> 재발생 금지
     assert overdue_events_again == []
+
+    # --- F9: 이미 빈 리스트인 공구는 new_rented에 잔류시키지 않아야 함 ---
+    rented_to_empty = {"스패너": []}
+    new_rented, _ = check_overdue(rented_to_empty, overdue_sec=7200, now=100)
+    assert new_rented == {}, new_rented
 
     # --- S4: light/buzzer 우선순위 (미반납+정상대여 동시 -> red / 미확인+미반납 동시 -> buzzer=unauth) ---
     tool_status_mixed = {
         "스패너": {"registered": 1, "detected": 0, "rented": 1},    # 정상 대여 중
         "드라이버": {"registered": 1, "detected": 0, "rented": 1},  # 미반납 초과
     }
-    overdue_only = [{"uid": "U1", "name": "홍길동", "out_time": 0, "cleared": False, "overdue_logged": False}]
-    assert decide_response(tool_status_mixed, overdue_only, now=7300, overdue_sec=7200) == {
+    overdue_only = [{"uid": "U1", "name": "홍길동", "out_time": 0, "cleared": False, "overdue_logged": True, "unauth": False}]
+    assert decide_response(tool_status_mixed, overdue_only) == {
         "light": "red", "buzzer": "overdue",
     }
 
     overdue_and_unauth = [
-        {"uid": "U1", "name": "홍길동", "out_time": 0, "cleared": False, "overdue_logged": False},   # 미반납
-        {"uid": "", "name": "", "out_time": 7290, "cleared": False, "overdue_logged": False},         # 미확인
+        {"uid": "U1", "name": "홍길동", "out_time": 0, "cleared": False, "overdue_logged": True, "unauth": False},   # 미반납
+        {"uid": "", "name": "", "out_time": 7290, "cleared": False, "overdue_logged": False, "unauth": True},        # 미확인
     ]
-    assert decide_response(tool_status_mixed, overdue_and_unauth, now=7300, overdue_sec=7200) == {
+    assert decide_response(tool_status_mixed, overdue_and_unauth) == {
         "light": "red", "buzzer": "unauth",
     }
 
     # 수동 해제(cleared) 시 red/buzzer 해제되어야 함
-    cleared = [{"uid": "", "name": "", "out_time": 0, "cleared": True, "overdue_logged": False}]
-    assert decide_response(tool_status_mixed, cleared, now=7300, overdue_sec=7200) == {
+    cleared = [{"uid": "", "name": "", "out_time": 0, "cleared": True, "overdue_logged": False, "unauth": True}]
+    assert decide_response(tool_status_mixed, cleared) == {
         "light": "yellow", "buzzer": "off",
     }
+
+    # --- F2: 재고 변경으로 confirmed=None(재기준선 대기) 상태 -> streak 도달 시 이벤트 없이 조용히 채택 ---
+    d_state_reset = {"스패너": {"confirmed": None, "candidate": 0, "streak": 0}}
+    reset_events = []
+    for detected in [{"스패너": 2}] * 3:
+        d_state_reset, ev = judge_tools(detected, {"스패너": 2}, debounce_frames, d_state_reset)
+        reset_events.extend(ev)
+    assert reset_events == [], reset_events
+    assert d_state_reset["스패너"]["confirmed"] == 0, d_state_reset
 
     print("selfcheck OK")
 
