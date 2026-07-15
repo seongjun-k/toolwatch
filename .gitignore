@@ -19,3 +19,6 @@ logs/*
 
 # 반출 스냅샷
 src/server/snapshots/
+
+# SQLite DB (E1)
+src/server/toolwatch.db

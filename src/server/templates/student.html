@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>toolwatch 내 대여 현황</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --border: #e5e8ed;
+    --text: #1a1f2b;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(20, 30, 45, .05), 0 2px 8px rgba(20, 30, 45, .04);
+    --sidebar-bg: #1e2b4d;
+    --ok: #15803d;      --ok-bg: #e7f6ec;    --ok-border: #a7dab8;
+    --danger: #b91c1c;  --danger-bg: #fde8e7; --danger-border: #f3aeab;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Pretendard", "Noto Sans KR", system-ui, -apple-system, "Malgun Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  .topbar {
+    background: var(--sidebar-bg); color: #fff;
+    padding: .9rem 1rem; display: flex; align-items: center; justify-content: space-between;
+  }
+  .topbar .logo { font-weight: 800; letter-spacing: -.01em; }
+  .topbar .logo .mark { color: #7fa3ff; }
+  .topbar .right { display: flex; align-items: center; gap: .75rem; font-size: .85rem; }
+  .topbar button {
+    background: none; border: 1px solid rgba(255,255,255,.4); color: #fff;
+    border-radius: 8px; padding: .3rem .6rem; font-size: .8rem; cursor: pointer;
+  }
+
+  .wrap { max-width: 480px; margin: 0 auto; padding: 1rem; }
+
+  /* ---- 로그인 화면 ---- */
+  .login-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 1.5rem; margin-top: 2.5rem;
+  }
+  .login-card h1 { font-size: 1.2rem; margin: 0 0 1rem; }
+  .field { margin-bottom: .9rem; }
+  .field label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .3rem; }
+  .field input {
+    width: 100%; padding: .6rem .7rem; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 1rem; font-family: inherit;
+  }
+  .submit-btn {
+    width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: .7rem; font-size: 1rem; font-weight: 700; cursor: pointer;
+  }
+  .error { color: var(--danger); font-size: .85rem; margin-bottom: .8rem; }
+
+  /* ---- 대여 목록 화면 ---- */
+  .section-title { font-size: .95rem; font-weight: 700; margin: 1.2rem 0 .6rem; color: var(--muted); }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 1rem; margin-bottom: .75rem;
+  }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+  .tool-name { font-weight: 700; font-size: 1.05rem; }
+  .pill {
+    display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .78rem;
+    font-weight: 700; border: 1px solid transparent;
+  }
+  .pill-ok   { background: var(--ok-bg);     color: var(--ok);     border-color: var(--ok-border); }
+  .pill-late { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
+  .meta { font-size: .82rem; color: var(--muted); margin-top: .4rem; }
+  .due-form { display: flex; gap: .4rem; margin-top: .6rem; }
+  .due-form input[type="datetime-local"] {
+    /* min-width:0 없으면 datetime-local 고유 최소폭이 flex 축소를 막아 좁은 폰에서 가로 오버플로 발생 */
+    flex: 1; min-width: 0; padding: .4rem; border: 1px solid var(--border); border-radius: 6px; font-size: .85rem;
+  }
+  .due-form button {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: .4rem .8rem;
+    font-size: .82rem; font-weight: 700; cursor: pointer;
+  }
+  .empty { color: var(--muted); font-size: .88rem; padding: .5rem 0; }
+</style>
+</head>
+<body>
+
+{% if page == "login" %}
+<div class="wrap">
+  <div class="login-card">
+    <h1><span class="mark" style="color:var(--accent)">toolwatch</span> 학생 로그인</h1>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="post" action="{{ url_for('student_login') }}">
+      <div class="field">
+        <label for="uid">RFID UID</label>
+        <input type="text" id="uid" name="uid" autocomplete="off" required>
+      </div>
+      <div class="field">
+        <label for="name">이름</label>
+        <input type="text" id="name" name="name" autocomplete="off" required>
+      </div>
+      <button type="submit" class="submit-btn">로그인</button>
+    </form>
+  </div>
+</div>
+
+{% else %}
+<div class="topbar">
+  <span class="logo"><span class="mark">toolwatch</span></span>
+  <div class="right">
+    <span>{{ name }}님</span>
+    <form method="post" action="{{ url_for('student_login') }}" style="margin:0">
+      <input type="hidden" name="action" value="logout">
+      <button type="submit">로그아웃</button>
+    </form>
+  </div>
+</div>
+<div class="wrap">
+  <div class="section-title">대여 중</div>
+  {% if open_loans %}
+    {% for loan in open_loans %}
+    <div class="card">
+      <div class="card-head">
+        <span class="tool-name">{{ tool_labels.get(loan.tool, loan.tool) }}</span>
+        <span class="pill {{ 'pill-late' if loan.overdue else 'pill-ok' }}">{{ '연체' if loan.overdue else '정상' }}</span>
+      </div>
+      <div class="meta">대여 시각: {{ loan.out_at }}</div>
+      <div class="meta">기한: {{ loan.due_at or '미설정' }}</div>
+      <form class="due-form" method="post" action="{{ url_for('student_set_due') }}">
+        <input type="hidden" name="loan_id" value="{{ loan.id }}">
+        <input type="datetime-local" name="due_at" value="{{ loan.due_at_input }}" required>
+        <button type="submit">기한 설정</button>
+      </form>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">현재 대여 중인 공구가 없습니다.</div>
+  {% endif %}
+
+  <div class="section-title">최근 반납 이력</div>
+  {% if returned_loans %}
+    {% for loan in returned_loans %}
+    <div class="card">
+      <div class="card-head">
+        <span class="tool-name">{{ tool_labels.get(loan.tool, loan.tool) }}</span>
+        <span class="pill pill-ok">반납완료</span>
+      </div>
+      <div class="meta">대여: {{ loan.out_at }} · 반납: {{ loan.returned_at }}</div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">반납 이력이 없습니다.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+</body>
+</html>

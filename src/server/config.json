@@ -5,14 +5,19 @@
   "debounce_frames": 3,
   "roi": null,
   "registered_stock": {
-    "스패너": 1,
-    "드라이버": 1,
-    "펜치": 1,
-    "육각렌치": 1
+    "nipper": 1,
+    "driver": 1,
+    "plier": 1,
+    "hex_key": 1
+  },
+  "tool_labels": {
+    "nipper": "니퍼",
+    "driver": "드라이버",
+    "plier": "펜치",
+    "hex_key": "육각렌치"
   },
   "rfid_session_sec": 30,
   "overdue_sec": 7200,
-  "uid_names": {},
   "hmi_password": "toolwatch1234",
   "secret_key": "toolwatch-dev-secret-change-me",
   "host": "0.0.0.0",
