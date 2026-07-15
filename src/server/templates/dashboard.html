@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{% if logged_in %}<meta http-equiv="refresh" content="5">{% endif %}
+<title>toolwatch 대시보드</title>
+<style>
+  body { font-family: sans-serif; margin: 1rem; background: #f5f5f5; color: #222; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.1rem; margin-top: 1.5rem; }
+  table { border-collapse: collapse; width: 100%; max-width: 640px; background: #fff; }
+  th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: center; }
+  th { background: #eee; }
+  .rented { color: #b8860b; font-weight: bold; }
+  .in-stock { color: #2e7d32; }
+  .warn-row { background: #fdecea; color: #b71c1c; font-weight: bold; }
+  img { max-width: 100%; border: 1px solid #ccc; margin-top: 1rem; }
+  form.inline { display: inline; }
+  fieldset { max-width: 640px; margin-top: 1rem; }
+  input[type=text], input[type=password], input[type=number] { padding: 0.3rem; }
+  .error { color: #b71c1c; }
+  @media (max-width: 480px) {
+    table { font-size: 0.8rem; }
+  }
+</style>
+</head>
+<body>
+<h1>toolwatch 대시보드</h1>
+
+{% if not logged_in %}
+<form method="post" action="{{ url_for('login') }}">
+  <label>비밀번호: <input type="password" name="password"></label>
+  <button type="submit">로그인</button>
+</form>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+{% else %}
+<p>최종 갱신: {{ last_updated or "아직 없음" }}</p>
+
+<h2>공구 상태</h2>
+<table>
+  <tr><th>공구</th><th>등록 재고</th><th>현재 검출</th><th>대여 중</th></tr>
+  {% for tool, info in tool_status.items() %}
+  <tr>
+    <td>{{ tool }}</td>
+    <td>{{ info.registered }}</td>
+    <td>{{ info.detected }}</td>
+    <td class="{{ 'rented' if info.rented > 0 else 'in-stock' }}">{{ info.rented }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="4">아직 수신된 프레임이 없습니다</td></tr>
+  {% endfor %}
+</table>
+
+<h2>대여 중 상세</h2>
+<table>
+  <tr><th>공구</th><th>대여자</th><th>UID</th><th>경과(초)</th><th>상태</th></tr>
+  {% for tool, items in rented.items() %}
+    {% for item in items %}
+    <tr class="{{ 'warn-row' if item.overdue or item.unauth else '' }}">
+      <td>{{ tool }}</td>
+      <td>{{ item.name }}</td>
+      <td>{{ item.uid }}</td>
+      <td>{{ item.elapsed_sec }}</td>
+      <td>{% if item.unauth %}미확인{% elif item.overdue %}미반납{% else %}정상{% endif %}</td>
+    </tr>
+    {% endfor %}
+  {% else %}
+  <tr><td colspan="5">대여 중인 공구가 없습니다</td></tr>
+  {% endfor %}
+</table>
+
+<form method="post" action="{{ url_for('control') }}" class="inline">
+  <input type="hidden" name="action" value="clear_warnings">
+  <button type="submit">경고 수동 해제</button>
+</form>
+
+{% if latest_frame_b64 %}
+<h2>최신 프레임</h2>
+<img src="data:image/jpeg;base64,{{ latest_frame_b64 }}" alt="최신 프레임">
+{% endif %}
+
+<h2>이벤트 이력 (최근)</h2>
+<table>
+  <tr><th>시각</th><th>이벤트</th><th>공구</th><th>UID</th><th>이름</th><th>스냅샷</th></tr>
+  {% for row in events %}
+  <tr class="{{ 'warn-row' if row['이벤트'] in ('UNAUTH', 'OVERDUE') else '' }}">
+    <td>{{ row['시각'] }}</td>
+    <td>{{ row['이벤트'] }}</td>
+    <td>{{ row['공구'] }}</td>
+    <td>{{ row['UID'] }}</td>
+    <td>{{ row['이름'] }}</td>
+    <td>{% if row.snapshot_filename %}<a href="{{ url_for('snapshot_file', filename=row.snapshot_filename) }}" target="_blank">보기</a>{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6">이력 없음</td></tr>
+  {% endfor %}
+</table>
+
+<h2>설정 변경</h2>
+<fieldset>
+  <legend>등록 재고</legend>
+  <form method="post" action="{{ url_for('control') }}">
+    <input type="hidden" name="action" value="stock">
+    {% for tool, count in config.registered_stock.items() %}
+    <label>{{ tool }}: <input type="number" min="0" name="stock_{{ tool }}" value="{{ count }}" style="width:4rem;"></label>
+    {% endfor %}
+    <button type="submit">저장</button>
+  </form>
+</fieldset>
+
+<fieldset>
+  <legend>미반납 임계 시간(초)</legend>
+  <form method="post" action="{{ url_for('control') }}">
+    <input type="hidden" name="action" value="overdue_sec">
+    <input type="number" min="1" name="overdue_sec" value="{{ config.overdue_sec }}">
+    <button type="submit">저장</button>
+  </form>
+</fieldset>
+
+<fieldset>
+  <legend>RFID UID ↔ 이름</legend>
+  <table>
+    <tr><th>UID</th><th>이름</th><th></th></tr>
+    {% for uid, name in config.uid_names.items() %}
+    <tr>
+      <td>{{ uid }}</td>
+      <td>{{ name }}</td>
+      <td>
+        <form method="post" action="{{ url_for('control') }}" class="inline">
+          <input type="hidden" name="action" value="uid_delete">
+          <input type="hidden" name="uid" value="{{ uid }}">
+          <button type="submit">삭제</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="{{ url_for('control') }}">
+    <input type="hidden" name="action" value="uid_add">
+    <input type="text" name="uid" placeholder="UID">
+    <input type="text" name="name" placeholder="이름">
+    <button type="submit">등록</button>
+  </form>
+</fieldset>
+
+{% endif %}
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "model_path": "model/best.pt",
+  "fallback_model": "yolo11n.pt",
+  "confidence_threshold": 0.5,
+  "debounce_frames": 3,
+  "roi": null,
+  "registered_stock": {
+    "스패너": 1,
+    "드라이버": 1,
+    "펜치": 1,
+    "육각렌치": 1
+  },
+  "rfid_session_sec": 30,
+  "overdue_sec": 7200,
+  "uid_names": {},
+  "hmi_password": "toolwatch1234",
+  "secret_key": "toolwatch-dev-secret-change-me",
+  "host": "0.0.0.0",
+  "port": 5000
+}

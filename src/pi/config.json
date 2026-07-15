@@ -1,0 +1,11 @@
+{
+  "server_url": "http://192.168.0.10:5000/frame",
+  "capture_interval_sec": 3,
+  "jpeg_quality": 80,
+  "relay_pins": {
+    "red": 5,
+    "yellow": 6,
+    "green": 13,
+    "buzzer": 19
+  }
+}
