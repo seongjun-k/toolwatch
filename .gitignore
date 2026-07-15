@@ -7,6 +7,12 @@ dataset/*
 *.pt
 __pycache__/
 
+# 가상환경 — 로컬 전용, requirements.txt로 재현
+.venv/
+
+# YOLO 학습 산출물
+runs/
+
 # 실행 로그
 logs/*
 !logs/.gitkeep

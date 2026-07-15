@@ -1,0 +1,12 @@
+# toolwatch 서버·학습 호스트(노트북/데탑) 의존성
+#
+# torch(CUDA)는 GPU 빌드를 먼저 설치해야 한다. 아래 requirements보다 먼저 실행:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# (CPU만 있으면 위 한 줄 생략 — ultralytics가 CPU torch를 자동으로 끌어온다)
+#
+# 그 다음:
+#   pip install -r requirements.txt
+
+ultralytics
+flask
+pillow
