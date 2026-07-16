@@ -98,6 +98,8 @@ def run() -> None:
                 result = resp.json()
                 _consume_uid(uid)
                 hw.apply(result["light"], result["buzzer"])
+                # 서버가 지시한 캡처 주기 반영(적응형 촬영) — 구서버 등 응답에 없으면 기존 주기 유지(하위 호환)
+                interval = result.get("interval", interval)
             except Exception:
                 # 카메라/GPIO 등 일시 오류 하나로 감시 루프 전체가 죽으면 안 됨(계획서 3.6).
                 # 직전 경고 상태 유지, 다음 주기에 재시도. KeyboardInterrupt는 Exception이 아니므로 종료는 여전히 가능

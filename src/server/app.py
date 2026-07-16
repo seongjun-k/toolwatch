@@ -45,6 +45,7 @@ state = {
 }
 _debounce_state = {}
 _session_at_streak = {}  # 공구별 스트릭 시작 시점의 rfid_session 스냅샷 (F6: 확정 시점이 아닌 시작 시점 세션으로 귀속)
+_frame_at_streak = {}  # 공구별 스트릭 시작 시점의 frame_bytes 스냅샷 (반출 확정 시점엔 손이 이미 사라져 증거로 부적합)
 _model = None  # ultralytics 모델 캐시, 최초 추론 시점까지 지연 로딩
 # ponytail: 전역 락 — 요청 빈도(3초 주기+대시보드)가 낮아 충분, 병목 시 세분화
 _state_lock = threading.Lock()
@@ -253,12 +254,14 @@ def receive_frame():
             for tool, d_state in _debounce_state.items():
                 if d_state["streak"] == 1:
                     _session_at_streak[tool] = state["rfid_session"]
+                    _frame_at_streak[tool] = frame_bytes
 
             uid_names = db.list_users(conn)
             for event in events:
                 tool = event["tool"]
                 if event["type"] == "OUT":
-                    snapshot_path = save_snapshot(tool, frame_bytes)
+                    # 확정 프레임 대신 감소가 처음 관측된(streak=1) 프레임을 증거로 저장 — 확정 시점엔 손이 이미 사라져 있음
+                    snapshot_path = save_snapshot(tool, _frame_at_streak.get(tool, frame_bytes))
                     attributed_uid, name, unauth = attribute_out(_session_at_streak.get(tool), uid_names)
                     loan_id = db.insert_loan(conn, tool, attributed_uid or "", now_str(), unauth, snapshot_path)
                     db.add_event(conn, "OUT", tool, uid=attributed_uid or "", loan_id=loan_id, snapshot_path=snapshot_path)
@@ -304,7 +307,13 @@ def receive_frame():
         }
 
         rented_items = [item for items in state["rented"].values() for item in items]
-        return jsonify(decide_response(state["tool_status"], rented_items))
+        response = decide_response(state["tool_status"], rented_items)
+        # 디바운스 진행 중(변화 관측 중)인 공구가 있으면 다음 캡처를 빠르게, 없으면 기본 주기 유지 지시
+        in_progress = any(
+            d["candidate"] != d["confirmed"] for d in _debounce_state.values()
+        )
+        response["interval"] = CONFIG.get("fast_interval_sec", 0.5) if in_progress else CONFIG.get("capture_interval_sec", 3)
+        return jsonify(response)
 
 
 @app.route("/")
