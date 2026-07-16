@@ -13,6 +13,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   uid          TEXT PRIMARY KEY,
   name         TEXT NOT NULL,
+  student_id   TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
@@ -52,6 +53,17 @@ def init_db(db_path=DEFAULT_DB_PATH):
     try:
         conn.executescript(SCHEMA)
         conn.commit()
+        # 기존 DB(구 스키마)에 student_id 컬럼이 없으면 추가 — 이미 있으면 예외 무시
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN student_id TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        # 학번은 학생 로그인 키 — 중복 등록 차단 (NULL은 SQLite 유니크 인덱스에서 중복 허용)
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_id ON users(student_id)"
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -64,13 +76,27 @@ def list_users(conn):
     return {row["uid"]: row["name"] for row in rows}
 
 
-def add_user(conn, uid, name):
+def add_user(conn, uid, name, student_id=None):
     conn.execute(
-        "INSERT INTO users (uid, name) VALUES (?, ?) "
-        "ON CONFLICT(uid) DO UPDATE SET name=excluded.name",
-        (uid, name),
+        "INSERT INTO users (uid, name, student_id) VALUES (?, ?, ?) "
+        "ON CONFLICT(uid) DO UPDATE SET name=excluded.name, student_id=excluded.student_id",
+        (uid, name, student_id),
     )
     conn.commit()
+
+
+def list_users_full(conn):
+    """uid, name, student_id를 모두 포함한 사용자 목록 (관리자 화면 표시용)."""
+    return conn.execute("SELECT uid, name, student_id FROM users").fetchall()
+
+
+def find_uid_by_student(conn, student_id, name):
+    """학번+이름이 일치하는 사용자의 uid를 반환 (학생 로그인용). 없으면 None."""
+    row = conn.execute(
+        "SELECT uid FROM users WHERE student_id = ? AND name = ?",
+        (student_id, name),
+    ).fetchone()
+    return row["uid"] if row else None
 
 
 def delete_user(conn, uid):
