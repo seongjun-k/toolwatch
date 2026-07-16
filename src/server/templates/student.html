@@ -3,20 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23c2410c'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3Et%3C/text%3E%3C/svg%3E">
 <title>toolwatch 내 대여 현황</title>
 <style>
   :root {
-    --bg: #f5f6f8;
+    --bg: #ececea;
     --surface: #ffffff;
-    --border: #e5e8ed;
-    --text: #1a1f2b;
-    --muted: #6b7280;
-    --accent: #2563eb;
-    --radius: 10px;
-    --shadow: 0 1px 2px rgba(20, 30, 45, .05), 0 2px 8px rgba(20, 30, 45, .04);
-    --sidebar-bg: #1e2b4d;
-    --ok: #15803d;      --ok-bg: #e7f6ec;    --ok-border: #a7dab8;
-    --danger: #b91c1c;  --danger-bg: #fde8e7; --danger-border: #f3aeab;
+    --surface-2: #f4f3f0;
+    --border: #d8d6cf;
+    --border-strong: #bfbcb2;
+    --text: #23241f;
+    --muted: #6b6a62;
+    --accent: #c2410c;
+    --accent-ink: #ffffff;
+    --radius: 3px;
+    --shadow: 0 1px 2px rgba(20, 20, 15, .06);
+    --header-bg: #23241f;
+    --ok: #2f7d3c;      --ok-bg: #eaf3ea;    --ok-border: #bcd9bd;
+    --warn: #a3620a;    --warn-bg: #faf0dc;  --warn-border: #e6c383;
+    --danger: #b3261e;  --danger-bg: #fbeae8; --danger-border: #edb8b2;
+    --mono: ui-monospace, "SFMono-Regular", "Consolas", "Menlo", monospace;
   }
   * { box-sizing: border-box; }
   body {
@@ -31,11 +37,11 @@
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
   .topbar {
-    background: var(--sidebar-bg); color: #fff;
+    background: var(--header-bg); color: #fff;
     padding: .9rem 1rem; display: flex; align-items: center; justify-content: space-between;
   }
   .topbar .logo { font-weight: 800; letter-spacing: -.01em; }
-  .topbar .logo .mark { color: #7fa3ff; }
+  .topbar .logo .mark { color: var(--accent); }
   .topbar .right { display: flex; align-items: center; gap: .75rem; font-size: .85rem; }
   .topbar button {
     background: none; border: 1px solid rgba(255,255,255,.4); color: #fff;
@@ -43,6 +49,18 @@
   }
 
   .wrap { max-width: 480px; margin: 0 auto; padding: 1rem; }
+
+  /* ---- 상태 변화 배너 ---- */
+  #banner-area { position: sticky; top: 0; z-index: 30; }
+  .banner {
+    display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+    padding: .6rem .9rem; margin-bottom: .5rem; border-radius: 8px; font-size: .88rem; font-weight: 600;
+    background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border);
+  }
+  .banner.banner-danger { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
+  .banner button {
+    background: none; border: none; color: inherit; font-size: 1rem; line-height: 1; cursor: pointer; padding: 0 .2rem;
+  }
 
   /* ---- 로그인 화면 ---- */
   .login-card {
@@ -57,25 +75,37 @@
     font-size: 1rem; font-family: inherit;
   }
   .submit-btn {
-    width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    width: 100%; background: var(--accent); color: var(--accent-ink); border: none; border-radius: 8px;
     padding: .7rem; font-size: 1rem; font-weight: 700; cursor: pointer;
   }
   .error { color: var(--danger); font-size: .85rem; margin-bottom: .8rem; }
 
-  /* ---- 대여 목록 화면 ---- */
+  /* ---- 대여 목록 화면 (리스트형) ---- */
   .section-title { font-size: .95rem; font-weight: 700; margin: 1.2rem 0 .6rem; color: var(--muted); }
-  .card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    box-shadow: var(--shadow); padding: 1rem; margin-bottom: .75rem;
+  .row-item {
+    display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    margin-bottom: .6rem; overflow: hidden;
   }
-  .card-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
-  .tool-name { font-weight: 700; font-size: 1.05rem; }
-  .pill {
-    display: inline-block; padding: .15rem .55rem; border-radius: 999px; font-size: .78rem;
-    font-weight: 700; border: 1px solid transparent;
+  .row-bar { width: 5px; flex: none; background: var(--ok); }
+  .row-item.is-overdue .row-bar { background: var(--danger); }
+  .row-body { flex: 1; min-width: 0; padding: .8rem .9rem; }
+  .row-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+  .tool-name { font-weight: 700; font-size: 1.02rem; }
+  .stat-dot {
+    display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; font-weight: 700; white-space: nowrap;
   }
-  .pill-ok   { background: var(--ok-bg);     color: var(--ok);     border-color: var(--ok-border); }
-  .pill-late { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
+  .stat-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .sd-ok::before     { background: var(--ok); }
+  .sd-danger::before { background: var(--danger); }
+  .sd-ok     { color: var(--ok); }
+  .sd-danger { color: var(--danger); }
+
+  /* 남은/초과 시간 — 학생이 가장 궁금해하는 정보이므로 크게 강조 */
+  .countdown { font-size: 1.3rem; font-weight: 800; margin-top: .35rem; font-variant-numeric: tabular-nums; }
+  .countdown.is-overdue { color: var(--danger); }
+  .countdown.is-ok { color: var(--ok); }
+  .due-missing { font-size: .9rem; color: var(--accent); font-weight: 700; margin-top: .35rem; }
+
   .meta { font-size: .82rem; color: var(--muted); margin-top: .4rem; }
   .due-form { display: flex; gap: .4rem; margin-top: .6rem; }
   .due-form input[type="datetime-local"] {
@@ -83,7 +113,7 @@
     flex: 1; min-width: 0; padding: .4rem; border: 1px solid var(--border); border-radius: 6px; font-size: .85rem;
   }
   .due-form button {
-    background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: .4rem .8rem;
+    background: var(--accent); color: var(--accent-ink); border: none; border-radius: 6px; padding: .4rem .8rem;
     font-size: .82rem; font-weight: 700; cursor: pointer;
   }
   .empty { color: var(--muted); font-size: .88rem; padding: .5rem 0; }
@@ -98,8 +128,8 @@
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     <form method="post" action="{{ url_for('student_login') }}">
       <div class="field">
-        <label for="uid">RFID UID</label>
-        <input type="text" id="uid" name="uid" autocomplete="off" required>
+        <label for="student_id">학번</label>
+        <input type="text" id="student_id" name="student_id" inputmode="numeric" autocomplete="off" required>
       </div>
       <div class="field">
         <label for="name">이름</label>
@@ -122,42 +152,188 @@
   </div>
 </div>
 <div class="wrap">
-  <div class="section-title">대여 중</div>
-  {% if open_loans %}
-    {% for loan in open_loans %}
-    <div class="card">
-      <div class="card-head">
-        <span class="tool-name">{{ tool_labels.get(loan.tool, loan.tool) }}</span>
-        <span class="pill {{ 'pill-late' if loan.overdue else 'pill-ok' }}">{{ '연체' if loan.overdue else '정상' }}</span>
-      </div>
-      <div class="meta">대여 시각: {{ loan.out_at }}</div>
-      <div class="meta">기한: {{ loan.due_at or '미설정' }}</div>
-      <form class="due-form" method="post" action="{{ url_for('student_set_due') }}">
-        <input type="hidden" name="loan_id" value="{{ loan.id }}">
-        <input type="datetime-local" name="due_at" value="{{ loan.due_at_input }}" required>
-        <button type="submit">기한 설정</button>
-      </form>
-    </div>
-    {% endfor %}
-  {% else %}
-    <div class="empty">현재 대여 중인 공구가 없습니다.</div>
-  {% endif %}
+  <div id="banner-area" aria-live="polite"></div>
 
-  <div class="section-title">최근 반납 이력</div>
-  {% if returned_loans %}
-    {% for loan in returned_loans %}
-    <div class="card">
-      <div class="card-head">
-        <span class="tool-name">{{ tool_labels.get(loan.tool, loan.tool) }}</span>
-        <span class="pill pill-ok">반납완료</span>
+  <div id="live">
+    <div class="section-title">대여 중</div>
+    {% if open_loans %}
+      {% for loan in open_loans %}
+      <div class="row-item {{ 'is-overdue' if loan.overdue else '' }}"
+           data-loan-id="{{ loan.id }}" data-tool="{{ tool_labels.get(loan.tool, loan.tool) }}"
+           data-out-at="{{ loan.out_at }}" data-overdue="{{ 'true' if loan.overdue else 'false' }}">
+        <div class="row-bar"></div>
+        <div class="row-body">
+          <div class="row-top">
+            <span class="tool-name">{{ tool_labels.get(loan.tool, loan.tool) }}</span>
+            <span class="stat-dot {{ 'sd-danger' if loan.overdue else 'sd-ok' }}">{{ '연체' if loan.overdue else '정상' }}</span>
+          </div>
+          {% if loan.due_at %}
+            <div class="countdown" data-due="{{ loan.due_at_input }}">계산 중…</div>
+          {% else %}
+            <div class="due-missing">기한을 설정해주세요</div>
+          {% endif %}
+          <div class="meta">대여 시각: {{ loan.out_at }}</div>
+          <div class="meta">기한: {{ loan.due_at or '미설정' }}</div>
+          <form class="due-form" method="post" action="{{ url_for('student_set_due') }}">
+            <input type="hidden" name="loan_id" value="{{ loan.id }}">
+            <input type="datetime-local" name="due_at" value="{{ loan.due_at_input }}" required>
+            <button type="submit">기한 설정</button>
+          </form>
+        </div>
       </div>
-      <div class="meta">대여: {{ loan.out_at }} · 반납: {{ loan.returned_at }}</div>
-    </div>
-    {% endfor %}
-  {% else %}
-    <div class="empty">반납 이력이 없습니다.</div>
-  {% endif %}
+      {% endfor %}
+    {% else %}
+      <div class="empty">현재 대여 중인 공구가 없습니다.</div>
+    {% endif %}
+
+    <div class="section-title">최근 반납 이력</div>
+    {% if returned_loans %}
+      {% for loan in returned_loans %}
+      <div class="row-item" data-tool="{{ tool_labels.get(loan.tool, loan.tool) }}" data-out-at="{{ loan.out_at }}" data-returned="true">
+        <div class="row-bar"></div>
+        <div class="row-body">
+          <div class="row-top">
+            <span class="tool-name">{{ tool_labels.get(loan.tool, loan.tool) }}</span>
+            <span class="stat-dot sd-ok">반납완료</span>
+          </div>
+          <div class="meta">대여: {{ loan.out_at }} · 반납: {{ loan.returned_at }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">반납 이력이 없습니다.</div>
+    {% endif %}
+  </div>
 </div>
+
+<script>
+(function () {
+  // ---- 남은/초과 시간 표시: data-due(datetime-local 형식, 로컬 시간)를 1분 간격으로 갱신 ----
+  function fmtRemain(ms) {
+    var abs = Math.abs(ms);
+    var totalMin = Math.floor(abs / 60000);
+    var h = Math.floor(totalMin / 60), m = totalMin % 60;
+    var body = (h > 0 ? h + '시간 ' : '') + m + '분';
+    return ms >= 0 ? body + ' 남음' : body + ' 초과';
+  }
+  function updateCountdowns() {
+    document.querySelectorAll('.countdown[data-due]').forEach(function (el) {
+      var due = new Date(el.getAttribute('data-due'));
+      if (isNaN(due.getTime())) return;
+      var diff = due.getTime() - Date.now();
+      el.textContent = fmtRemain(diff);
+      el.classList.toggle('is-overdue', diff < 0);
+      el.classList.toggle('is-ok', diff >= 0);
+    });
+  }
+  updateCountdowns();
+  setInterval(updateCountdowns, 60000);
+
+  // ---- 상태 변화 배너 ----
+  var baseTitle = document.title;
+  var activeBanners = 0;
+  function setTitleCount() {
+    document.title = activeBanners > 0 ? '(' + activeBanners + ') ' + baseTitle : baseTitle;
+  }
+  function showBanner(text, danger) {
+    var area = document.getElementById('banner-area');
+    var el = document.createElement('div');
+    el.className = 'banner' + (danger ? ' banner-danger' : '');
+    el.setAttribute('role', 'status');
+    var span = document.createElement('span');
+    span.textContent = text;
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', '알림 닫기');
+    closeBtn.textContent = '✕';
+    el.appendChild(span);
+    el.appendChild(closeBtn);
+    area.appendChild(el);
+    activeBanners++; setTitleCount();
+    if (navigator.vibrate) { try { navigator.vibrate(150); } catch (e) {} }
+    var removed = false;
+    function remove() {
+      if (removed) return;
+      removed = true;
+      el.remove();
+      activeBanners = Math.max(0, activeBanners - 1); setTitleCount();
+    }
+    closeBtn.addEventListener('click', remove);
+    setTimeout(remove, 6000);
+  }
+
+  // ---- 5초 폴링: #live 영역만 교체, 편집 중(입력 포커스)이면 이번 회차는 건너뜀 ----
+  function snapshotOpen(root) {
+    var map = {};
+    root.querySelectorAll('.row-item[data-loan-id]').forEach(function (row) {
+      map[row.getAttribute('data-loan-id')] = {
+        tool: row.getAttribute('data-tool'),
+        outAt: row.getAttribute('data-out-at'),
+        overdue: row.getAttribute('data-overdue') === 'true'
+      };
+    });
+    return map;
+  }
+  function snapshotReturnedKeys(root) {
+    var set = {};
+    root.querySelectorAll('.row-item[data-returned]').forEach(function (row) {
+      set[row.getAttribute('data-tool') + '|' + row.getAttribute('data-out-at')] = true;
+    });
+    return set;
+  }
+
+  var live = document.getElementById('live');
+  var prevOpen = snapshotOpen(live);
+  var prevReturned = snapshotReturnedKeys(live);
+  var firstRun = true;
+
+  function refresh() {
+    var current = document.getElementById('live');
+    if (current.contains(document.activeElement) && document.activeElement !== document.body) {
+      return; // 입력 중(기한 설정 폼 등)에는 이번 갱신을 건너뛴다
+    }
+    fetch(window.location.href, { credentials: 'same-origin' })
+      .then(function (res) { if (!res.ok) return null; return res.text(); })
+      .then(function (html) {
+        if (!html) return;
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var fresh = doc.getElementById('live');
+        var curr = document.getElementById('live');
+        if (!fresh || !curr) return;
+
+        var newOpen = snapshotOpen(fresh);
+        var newReturned = snapshotReturnedKeys(fresh);
+
+        if (!firstRun) {
+          Object.keys(newOpen).forEach(function (id) {
+            if (!prevOpen[id]) {
+              showBanner(newOpen[id].tool + ' 대여했습니다', false);
+            } else if (!prevOpen[id].overdue && newOpen[id].overdue) {
+              showBanner(newOpen[id].tool + ' 반납 기한이 지났습니다', true);
+            }
+          });
+          Object.keys(prevOpen).forEach(function (id) {
+            if (!newOpen[id]) {
+              var key = prevOpen[id].tool + '|' + prevOpen[id].outAt;
+              if (newReturned[key]) {
+                showBanner(prevOpen[id].tool + ' 반납 처리되었습니다', false);
+              }
+            }
+          });
+        }
+        firstRun = false;
+        prevOpen = newOpen;
+        prevReturned = newReturned;
+
+        curr.replaceWith(fresh);
+        live = document.getElementById('live');
+        updateCountdowns();
+      })
+      .catch(function () { /* 네트워크 오류 시 직전 화면 유지 */ });
+  }
+  setInterval(refresh, 5000);
+})();
+</script>
 {% endif %}
 
 </body>

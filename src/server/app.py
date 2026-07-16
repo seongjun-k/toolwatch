@@ -8,6 +8,7 @@ import base64
 import io
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -16,7 +17,7 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from PIL import Image
 
 import db
@@ -328,7 +329,7 @@ def dashboard():
         conn = db.get_conn(DB_PATH)
         try:
             events = db.get_recent_events(conn)
-            uid_names = db.list_users(conn)
+            users_full = db.list_users_full(conn)
         finally:
             conn.close()
         return render_template(
@@ -340,7 +341,7 @@ def dashboard():
             latest_frame_b64=latest_frame_b64,
             last_updated=state["last_updated"],
             config=CONFIG,
-            uid_names=uid_names,
+            users_full=users_full,
         )
 
 
@@ -393,8 +394,13 @@ def control():
             elif action == "uid_add":
                 uid = request.form.get("uid", "").strip()
                 name = request.form.get("name", "").strip()
+                student_id = request.form.get("student_id", "").strip()
                 if uid and name:
-                    db.add_user(conn, uid, name)
+                    try:
+                        db.add_user(conn, uid, name, student_id or None)
+                    except sqlite3.IntegrityError:
+                        # 학번 유니크 인덱스 위반 — 500 대신 안내 문구로
+                        flash("이미 사용 중인 학번입니다")
             elif action == "uid_delete":
                 db.delete_user(conn, request.form.get("uid", ""))
         finally:
@@ -425,17 +431,17 @@ def student_login():
         if request.form.get("action") == "logout":
             session.pop("student_uid", None)
             return redirect(url_for("student_login"))
-        uid = request.form.get("uid", "").strip()
+        student_id = request.form.get("student_id", "").strip()
         name = request.form.get("name", "").strip()
         conn = db.get_conn(DB_PATH)
         try:
-            uid_names = db.list_users(conn)
+            uid = db.find_uid_by_student(conn, student_id, name)
         finally:
             conn.close()
-        if uid and uid_names.get(uid) == name:
+        if uid:
             session["student_uid"] = uid
             return redirect(url_for("student_loans"))
-        error = "등록된 UID/이름과 일치하지 않습니다"
+        error = "등록된 학번/이름과 일치하지 않습니다"
     elif session.get("student_uid"):
         return redirect(url_for("student_loans"))
     return render_template("student.html", page="login", error=error)
