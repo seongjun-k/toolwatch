@@ -28,7 +28,5 @@
   "vapid_email": "CHANGE-ME",
   "morning_notify_time": "09:00",
   "overdue_grace_sec": 1800,
-  "ssl_cert": "src/server/cert.pem",
-  "ssl_key": "src/server/cert-key.pem",
   "frame_token": "CHANGE-ME"
 }

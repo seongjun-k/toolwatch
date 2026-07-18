@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 
@@ -34,7 +34,7 @@ with open(CONFIG_PATH, encoding="utf-8") as f:
     CONFIG = json.load(f)
 
 # config의 파일 경로는 저장소 루트 기준 상대경로 — 실행 위치(cwd)와 무관하게 동작하도록 절대경로로 정규화
-for _key in ("ssl_cert", "ssl_key", "vapid_private_key_file"):
+for _key in ("vapid_private_key_file",):
     if CONFIG.get(_key):
         CONFIG[_key] = str(ROOT_DIR / CONFIG[_key])
 
@@ -49,6 +49,9 @@ state = {
     "last_updated": None,
     "rented": {},
     "rfid_session": None,  # {"uid":..., "expires_at":...} or None
+    "reservations": {},  # {uid: {"tool","due_epoch","due_str","expires_at"}} — /me/reserve 60초 예약
+    "returns": {},  # {uid: {"tool","loan_id","expires_at","tagged"}} — /me/return 60초 반납 대기
+    "return_alarm_until": 0,  # epoch, 이 시각까지 반납 실패 경보(적색+unauth 부저) 강제
 }
 _debounce_state = {}
 _session_at_streak = {}  # 공구별 스트릭 시작 시점의 rfid_session 스냅샷 (F6: 확정 시점이 아닌 시작 시점 세션으로 귀속)
@@ -137,6 +140,24 @@ def check_overdue(rented_by_tool, overdue_sec, now):
         if new_items:  # F9: 반납으로 빈 리스트가 된 공구는 잔류시키지 않음
             new_rented[tool] = new_items
     return new_rented, events
+
+
+def expire_returns(returns, now):
+    """순수 함수: 반납 대기(state["returns"]) 중 만료된 항목을 걸러낸다.
+
+    태그(tagged)했는데 60초 안에 IN이 확정되지 않은 경우만 경보 대상(RETURN_FAIL) —
+    태그 없이 그냥 시간이 지난 경우는 조용히 삭제한다.
+    반환: (남은 returns, 경보 여부, 실패 목록[{"uid","tool","loan_id"}])
+    """
+    remaining = {}
+    failures = []
+    for uid, entry in returns.items():
+        if entry["expires_at"] < now:
+            if entry["tagged"]:
+                failures.append({"uid": uid, "tool": entry["tool"], "loan_id": entry["loan_id"]})
+        else:
+            remaining[uid] = entry
+    return remaining, bool(failures), failures
 
 
 def decide_response(tool_status, rented_items=()):
@@ -238,6 +259,39 @@ def flush_pushes(pending):
         conn.close()
 
 
+# ponytail: 메모리 카운터 — 재시작 시 초기화, 프록시 뒤 XFF 신뢰. 실서비스면 flask-limiter
+_login_fails = {}  # ip -> {"count": int, "until": epoch} — 5회 실패 시 30초 잠금
+_login_fails_lock = threading.Lock()
+
+
+def _client_ip():
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+
+
+def login_blocked(ip):
+    with _login_fails_lock:
+        entry = _login_fails.get(ip)
+        if entry is None:
+            return False
+        if entry["count"] < 5:
+            return False
+        if time.time() >= entry["until"]:
+            del _login_fails[ip]
+            return False
+        return True
+
+
+def record_login_result(ip, ok):
+    with _login_fails_lock:
+        if ok:
+            _login_fails.pop(ip, None)
+            return
+        entry = _login_fails.setdefault(ip, {"count": 0, "until": 0})
+        entry["count"] += 1
+        if entry["count"] >= 5:
+            entry["until"] = time.time() + 30
+
+
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -266,6 +320,10 @@ def receive_frame():
         try:
             state["rfid_session"] = resolve_session(state["rfid_session"], uid, now, CONFIG["rfid_session_sec"])
 
+            # 반납 대기 중인 학생이 이번 프레임에 카드를 태그했으면 표시 (IN 미확정 시 경보 판정용)
+            if uid and uid in state["returns"] and state["returns"][uid]["expires_at"] > now:
+                state["returns"][uid]["tagged"] = True
+
             detected_counts = detect_tools(frame_bytes)
 
             global _debounce_state
@@ -287,7 +345,17 @@ def receive_frame():
                     # 확정 프레임 대신 감소가 처음 관측된(streak=1) 프레임을 증거로 저장 — 확정 시점엔 손이 이미 사라져 있음
                     snapshot_path = save_snapshot(tool, _frame_at_streak.get(tool, frame_bytes))
                     attributed_uid, name, unauth = attribute_out(_session_at_streak.get(tool), uid_names)
-                    loan_id = db.insert_loan(conn, tool, attributed_uid or "", now_str(), unauth, snapshot_path)
+
+                    # 예약 대여: 60초 내 본인 카드로 예약한 공구를 반출하면 반납 기한을 loan에 바로 반영
+                    reservation = state["reservations"].get(attributed_uid) if attributed_uid else None
+                    due_str = None
+                    due_epoch = None
+                    if reservation and reservation["expires_at"] > now and reservation["tool"] == tool:
+                        due_str = reservation["due_str"]
+                        due_epoch = reservation["due_epoch"]
+                        state["reservations"].pop(attributed_uid, None)
+
+                    loan_id = db.insert_loan(conn, tool, attributed_uid or "", now_str(), unauth, snapshot_path, due_at=due_str)
                     db.add_event(conn, "OUT", tool, uid=attributed_uid or "", loan_id=loan_id, snapshot_path=snapshot_path)
                     if unauth:
                         # OUT 행은 그대로 두고 미확인 반출만 별도 행으로 추가 기록 (대시보드 이력에서 구분용)
@@ -296,7 +364,7 @@ def receive_frame():
                         tool_label = CONFIG.get("tool_labels", {}).get(tool, tool)
                         pending_pushes.append((attributed_uid, f"{tool_label} 대여 처리됨"))
                     state["rented"].setdefault(tool, []).append({
-                        "uid": attributed_uid or "", "name": name, "out_time": now, "due_at": None,
+                        "uid": attributed_uid or "", "name": name, "out_time": now, "due_at": due_epoch,
                         "cleared": False, "overdue_logged": False, "unauth": unauth, "loan_id": loan_id,
                     })
                 else:  # IN — 같은 공구 여러 개는 큐라 오래된 것부터 반납 처리
@@ -310,12 +378,29 @@ def receive_frame():
                     if item.get("uid"):
                         tool_label = CONFIG.get("tool_labels", {}).get(tool, tool)
                         pending_pushes.append((item["uid"], f"{tool_label} 반납 완료"))
+                    # 정상 반납: 이 loan_id(또는 tool 일치)로 대기 중이던 반납 예약을 지운다
+                    return_uid = next(
+                        (
+                            u for u, r in state["returns"].items()
+                            if r["loan_id"] == item.get("loan_id") or r["tool"] == tool
+                        ),
+                        None,
+                    )
+                    if return_uid is not None:
+                        state["returns"].pop(return_uid, None)
 
             state["rented"], overdue_events = check_overdue(state["rented"], CONFIG["overdue_sec"], now)
             for ev in overdue_events:
                 if ev["loan_id"] is not None:
                     db.mark_overdue(conn, ev["loan_id"])
                 db.add_event(conn, "OVERDUE", ev["tool"], uid=ev["uid"], loan_id=ev["loan_id"])
+
+            # 반납 대기 만료 스캔: 태그했는데 IN 미확정이면 30초 경보 + RETURN_FAIL 1회 기록
+            state["returns"], alarm, return_failures = expire_returns(state["returns"], now)
+            if alarm:
+                state["return_alarm_until"] = now + 30
+            for fail in return_failures:
+                db.add_event(conn, "RETURN_FAIL", fail["tool"], uid=fail["uid"], loan_id=fail["loan_id"])
         finally:
             conn.close()
 
@@ -338,6 +423,11 @@ def receive_frame():
 
         rented_items = [item for items in state["rented"].values() for item in items]
         response = decide_response(state["tool_status"], rented_items)
+        # 반납 실패 경보는 rented 플래그가 아닌 시한부 상태(return_alarm_until)라 decide_response의
+        # 단일 판정 지점 밖에서 호출부가 덮어쓴다 (함수 시그니처는 그대로 유지)
+        if now < state["return_alarm_until"]:
+            response["light"] = "red"
+            response["buzzer"] = "unauth"
         # 디바운스 진행 중(변화 관측 중)인 공구가 있으면 다음 캡처를 빠르게, 없으면 기본 주기 유지 지시
         in_progress = any(
             d["candidate"] != d["confirmed"] for d in _debounce_state.values()
@@ -390,10 +480,16 @@ def dashboard():
 def login():
     error = None
     if request.method == "POST":
-        if request.form.get("password") == CONFIG["hmi_password"]:
+        ip = _client_ip()
+        if login_blocked(ip):
+            error = "시도가 너무 많습니다. 잠시 후 다시 시도하세요"
+        elif request.form.get("password") == CONFIG["hmi_password"]:
+            record_login_result(ip, True)
             session["logged_in"] = True
             return redirect(url_for("dashboard"))
-        error = "비밀번호가 틀렸습니다"
+        else:
+            record_login_result(ip, False)
+            error = "비밀번호가 틀렸습니다"
     return render_template("dashboard.html", logged_in=False, error=error)
 
 
@@ -407,6 +503,20 @@ def logout():
 @login_required
 def control():
     global _debounce_state
+    if request.form.get("action") == "push_test":
+        # 상태를 건드리지 않고 네트워크 I/O만 하므로 _state_lock 밖에서 처리 (푸시 지연이 /frame을 막지 않게)
+        uid = request.form.get("uid", "")
+        conn = db.get_conn(DB_PATH)
+        try:
+            subs = db.get_subscriptions(conn, uid)
+            if subs:
+                push.send_push(conn, uid, "toolwatch", "알림 테스트입니다", CONFIG)
+                flash(f"테스트 알림 발송 (구독 {len(subs)}건)")
+            else:
+                flash("이 사용자는 알림 구독이 없습니다 (학생 페이지에서 '알림 켜기' 필요)")
+        finally:
+            conn.close()
+        return redirect(url_for("dashboard"))
     with _state_lock:
         action = request.form.get("action")
         conn = db.get_conn(DB_PATH)
@@ -472,6 +582,10 @@ def student_login():
         if request.form.get("action") == "logout":
             session.pop("student_uid", None)
             return redirect(url_for("student_login"))
+        ip = _client_ip()
+        if login_blocked(ip):
+            error = "시도가 너무 많습니다. 잠시 후 다시 시도하세요"
+            return render_template("student.html", page="login", error=error)
         student_id = request.form.get("student_id", "").strip()
         name = request.form.get("name", "").strip()
         conn = db.get_conn(DB_PATH)
@@ -480,8 +594,10 @@ def student_login():
         finally:
             conn.close()
         if uid:
+            record_login_result(ip, True)
             session["student_uid"] = uid
             return redirect(url_for("student_loans"))
+        record_login_result(ip, False)
         error = "등록된 학번/이름과 일치하지 않습니다"
     elif session.get("student_uid"):
         return redirect(url_for("student_loans"))
@@ -498,6 +614,37 @@ def student_loans():
         rows = db.get_loans_by_uid(conn, uid)
     finally:
         conn.close()
+
+    with _state_lock:
+        now = time.time()
+        tools = [
+            {
+                "key": tool, "label": CONFIG.get("tool_labels", {}).get(tool, tool),
+                "available": max(0, registered - len(state["rented"].get(tool, []))),
+            }
+            for tool, registered in CONFIG["registered_stock"].items()
+        ]
+        res = state["reservations"].get(uid)
+        if res and res["expires_at"] > now:
+            reservation = {
+                "tool_label": CONFIG.get("tool_labels", {}).get(res["tool"], res["tool"]),
+                "remaining_sec": int(res["expires_at"] - now),
+            }
+        else:
+            reservation = None
+            state["reservations"].pop(uid, None)  # 만료된 예약은 조회 시점에 정리
+
+        ret = state["returns"].get(uid)
+        if ret and ret["expires_at"] > now:
+            my_return = {
+                "tool_label": CONFIG.get("tool_labels", {}).get(ret["tool"], ret["tool"]),
+                "remaining_sec": int(ret["expires_at"] - now),
+                "tagged": ret["tagged"],
+            }
+            my_return_loan_id = ret["loan_id"]
+        else:
+            my_return = None
+            my_return_loan_id = None  # 만료 시 표시만 안 함 — 경보 판정은 /frame 쪽 스캔이 담당
 
     open_loans = []
     returned_loans = []
@@ -524,7 +671,81 @@ def student_loans():
         "student.html", page="loans", name=uid_names.get(uid, ""),
         open_loans=open_loans, returned_loans=returned_loans[:5],
         tool_labels=CONFIG.get("tool_labels", {}),
+        tools=tools, reservation=reservation,
+        my_return=my_return, my_return_loan_id=my_return_loan_id,
     )
+
+
+@app.route("/me/reserve", methods=["POST"])
+@student_login_required
+def student_reserve():
+    uid = session["student_uid"]
+    tool = request.form.get("tool", "")
+    due_day_raw = request.form.get("due_day", "")  # 0=오늘 ~ 3=3일 후 (탭 화이트리스트)
+    due_time_raw = request.form.get("due_time", "")  # HH:MM — 시각은 상세 지정 허용
+    if tool not in CONFIG["registered_stock"] or due_day_raw not in ("0", "1", "2", "3"):
+        return redirect(url_for("student_loans"))
+    try:
+        hh, mm = (int(x) for x in due_time_raw.split(":"))
+        due_dt = datetime.now().replace(hour=hh, minute=mm, second=0, microsecond=0) + timedelta(days=int(due_day_raw))
+    except ValueError:
+        return redirect(url_for("student_loans"))
+    due_epoch = due_dt.timestamp()
+    if due_epoch <= time.time():  # 오늘 탭에 이미 지난 시각 조합 거부
+        flash("과거로 시간여행을 하셨습니다. 반납 기한은 미래로 잡아주세요.")
+        return redirect(url_for("student_loans"))
+
+    with _state_lock:
+        state["reservations"][uid] = {
+            "tool": tool,
+            "due_epoch": due_epoch,
+            "due_str": datetime.fromtimestamp(due_epoch).strftime("%Y-%m-%d %H:%M:%S"),
+            "expires_at": time.time() + 60,
+        }
+    return redirect(url_for("student_loans"))
+
+
+@app.route("/me/reserve/cancel", methods=["POST"])
+@student_login_required
+def student_reserve_cancel():
+    uid = session["student_uid"]
+    with _state_lock:
+        state["reservations"].pop(uid, None)
+    return redirect(url_for("student_loans"))
+
+
+@app.route("/me/return", methods=["POST"])
+@student_login_required
+def student_return():
+    uid = session["student_uid"]
+    loan_id_raw = request.form.get("loan_id", "")
+    if not loan_id_raw.isdigit():
+        return redirect(url_for("student_loans"))
+    loan_id = int(loan_id_raw)
+
+    with _state_lock:
+        tool = None
+        for t, items in state["rented"].items():
+            for item in items:
+                if item.get("loan_id") == loan_id and item.get("uid") == uid:
+                    tool = t
+                    break
+            if tool:
+                break
+        if tool is not None:
+            state["returns"][uid] = {
+                "tool": tool, "loan_id": loan_id, "expires_at": time.time() + 60, "tagged": False,
+            }
+    return redirect(url_for("student_loans"))
+
+
+@app.route("/me/return/cancel", methods=["POST"])
+@student_login_required
+def student_return_cancel():
+    uid = session["student_uid"]
+    with _state_lock:
+        state["returns"].pop(uid, None)
+    return redirect(url_for("student_loans"))
 
 
 @app.route("/me/due", methods=["POST"])
@@ -806,6 +1027,33 @@ def _selfcheck():
     )
     assert no_reminders == [], no_reminders
 
+    # --- /frame·로그인 라우트 통합 확인 (YOLO 추론 경로는 타지 않는 케이스만) ---
+    client = app.test_client()
+    if CONFIG.get("frame_token"):
+        resp = client.post("/frame")
+        assert resp.status_code == 401, resp.status_code
+    resp = client.post("/frame", headers={"X-Frame-Token": CONFIG.get("frame_token", "")})
+    assert resp.status_code == 400, resp.status_code
+    assert client.get("/").status_code == 302
+    assert client.get("/me/loans").status_code == 302
+    assert client.post("/me/reserve").status_code == 302
+    assert client.post("/me/return").status_code == 302
+
+    # --- expire_returns 순수 함수: tagged 만료 -> 경보, untagged 만료 -> 무경보, 미만료 -> 유지 ---
+    base_returns = {
+        "U1": {"tool": "스패너", "loan_id": 1, "expires_at": 100, "tagged": True},
+        "U2": {"tool": "니퍼", "loan_id": 2, "expires_at": 100, "tagged": False},
+        "U3": {"tool": "드라이버", "loan_id": 3, "expires_at": 9999, "tagged": False},
+    }
+    remaining, alarm, failures = expire_returns(base_returns, now=200)
+    assert alarm is True and failures == [{"uid": "U1", "tool": "스패너", "loan_id": 1}], (alarm, failures)
+    assert remaining == {"U3": base_returns["U3"]}, remaining
+
+    for _ in range(6):
+        last_resp = client.post("/login", data={"password": "wrong"})
+    assert "시도가 너무 많습니다" in last_resp.get_data(as_text=True)
+    _login_fails.clear()
+
     print("selfcheck OK")
 
 
@@ -820,8 +1068,5 @@ if __name__ == "__main__":
         finally:
             _conn.close()
         threading.Thread(target=reminder_loop, daemon=True).start()
-        # HTTPS(E3): 웹 푸시는 secure context 필수 — mkcert 인증서가 있으면 HTTPS로 기동
-        ssl_ctx = None
-        if CONFIG.get("ssl_cert") and CONFIG.get("ssl_key"):
-            ssl_ctx = (CONFIG["ssl_cert"], CONFIG["ssl_key"])
-        app.run(host=CONFIG.get("host", "0.0.0.0"), port=CONFIG.get("port", 5000), ssl_context=ssl_ctx)
+        from waitress import serve  # 개발 서버 대체 (TLS는 Funnel이 종단, 계획 외 옵션 튜닝 금지)
+        serve(app, host=CONFIG.get("host", "0.0.0.0"), port=CONFIG.get("port", 5000), threads=8)

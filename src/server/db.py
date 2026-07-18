@@ -117,10 +117,10 @@ def delete_user(conn, uid):
 
 # --- loans ---
 
-def insert_loan(conn, tool, uid, out_at, unauth, snapshot_path=None):
+def insert_loan(conn, tool, uid, out_at, unauth, snapshot_path=None, due_at=None):
     cur = conn.execute(
-        "INSERT INTO loans (tool, uid, out_at, unauth, snapshot_path) VALUES (?, ?, ?, ?, ?)",
-        (tool, uid or None, out_at, int(unauth), snapshot_path),
+        "INSERT INTO loans (tool, uid, out_at, unauth, snapshot_path, due_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (tool, uid or None, out_at, int(unauth), snapshot_path, due_at),
     )
     conn.commit()
     return cur.lastrowid

@@ -7,6 +7,7 @@
 <title>toolwatch 내 대여 현황</title>
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 <meta name="theme-color" content="#23241f">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='toolwatch.css') }}">
 <style>
   :root {
@@ -94,6 +95,25 @@
     font-size: .82rem; font-weight: 700; cursor: pointer;
   }
   .empty { color: var(--muted); font-size: .88rem; padding: .5rem 0; }
+
+  /* ---- 대여하기: 공구·기한 탭 선택 ---- */
+  .tool-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .due-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; margin-top: .5rem; }
+  .tool-tab {
+    position: relative; display: block; text-align: center; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 8px; padding: .6rem .3rem;
+    background: var(--surface-2); font-weight: 700; font-size: .92rem;
+  }
+  .tool-tab input { position: absolute; opacity: 0; pointer-events: none; }
+  .tool-tab .avail { display: block; font-size: .72rem; color: var(--muted); font-weight: 400; margin-top: .15rem; }
+  .tool-tab:has(input:checked) { border-color: var(--accent); background: var(--surface); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .tool-tab:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+  .due-tab { font-size: .85rem; padding: .5rem .2rem; }
+  .due-form > input[type="time"] {
+    margin-top: .5rem; padding: .5rem; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 1rem; font-family: inherit; width: 100%;
+  }
+  .due-form > button[type="submit"] { margin-top: .6rem; padding: .6rem; font-size: .95rem; }
 </style>
 </head>
 <body>
@@ -131,8 +151,54 @@
 </div>
 <div class="wrap">
   <div id="banner-area" aria-live="polite"></div>
+  {% with msgs = get_flashed_messages() %}{% if msgs %}
+  <script>alert({{ msgs[0]|tojson }});</script>
+  {% endif %}{% endwith %}
 
   <div id="live">
+    <div class="section-title">대여하기</div>
+    {% if reservation %}
+      <div class="row-item">
+        <div class="row-bar"></div>
+        <div class="row-body">
+          <div class="row-top">
+            <span class="tool-name">{{ reservation.tool_label }} 예약됨</span>
+          </div>
+          <div class="meta">{{ reservation.remaining_sec }}초 안에 카드를 태그하세요</div>
+          <form class="due-form" method="post" action="{{ url_for('student_reserve_cancel') }}">
+            <button type="submit">예약 취소</button>
+          </form>
+        </div>
+      </div>
+    {% else %}
+      <div class="row-item">
+        <div class="row-bar"></div>
+        <div class="row-body">
+          <form class="due-form" method="post" action="{{ url_for('student_reserve') }}" style="flex-direction:column; align-items:stretch">
+            <div class="tool-tabs">
+              {% for t in tools %}
+              <label class="tool-tab">
+                <input type="radio" name="tool" value="{{ t.key }}" {{ 'disabled' if t.available <= 0 else '' }} required>
+                {{ t.label }}
+                <span class="avail">{{ '남은 수량 ' ~ t.available if t.available > 0 else '모두 대여 중' }}</span>
+              </label>
+              {% endfor %}
+            </div>
+            <div class="due-tabs">
+              {% for d, lbl in [(0, "오늘"), (1, "내일"), (2, "모레"), (3, "3일 후")] %}
+              <label class="tool-tab due-tab">
+                <input type="radio" name="due_day" value="{{ d }}" required>
+                {{ lbl }}
+              </label>
+              {% endfor %}
+            </div>
+            <input type="time" name="due_time" value="18:00" required>
+            <button type="submit">대여하기</button>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+
     <div class="section-title">대여 중</div>
     {% if open_loans %}
       {% for loan in open_loans %}
@@ -157,6 +223,21 @@
             <input type="datetime-local" name="due_at" value="{{ loan.due_at_input }}" required>
             <button type="submit">기한 설정</button>
           </form>
+          {% if my_return_loan_id == loan.id and my_return %}
+            {% if my_return.tagged %}
+              <div class="meta">공구 인식 대기 중…</div>
+            {% else %}
+              <div class="meta">카드를 태그하고 공구를 거치대에 걸어주세요 ({{ my_return.remaining_sec }}초)</div>
+            {% endif %}
+            <form class="due-form" method="post" action="{{ url_for('student_return_cancel') }}">
+              <button type="submit">취소</button>
+            </form>
+          {% else %}
+            <form class="due-form" method="post" action="{{ url_for('student_return') }}">
+              <input type="hidden" name="loan_id" value="{{ loan.id }}">
+              <button type="submit">반납하기</button>
+            </form>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
