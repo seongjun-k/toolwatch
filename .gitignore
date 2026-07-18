@@ -22,3 +22,10 @@ src/server/snapshots/
 
 # SQLite DB (E1)
 src/server/toolwatch.db
+
+# VAPID 개인키 (E3)
+src/server/vapid_private.pem
+
+# mkcert 인증서 (E3 HTTPS)
+src/server/cert.pem
+src/server/cert-key.pem

@@ -10,3 +10,4 @@
 ultralytics
 flask
 pillow
+pywebpush

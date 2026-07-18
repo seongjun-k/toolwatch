@@ -22,5 +22,12 @@
   "hmi_password": "toolwatch1234",
   "secret_key": "toolwatch-dev-secret-change-me",
   "host": "0.0.0.0",
-  "port": 5000
+  "port": 5000,
+  "vapid_public_key": "BOcwjU2iX7c4hPsT7pwwLt-iqbfT0Ua0V1d3yPV93bxFPkM9GKL3b-oURjnaqZisFOuRvOuBBodTrKH4VWQTpH8",
+  "vapid_private_key_file": "src/server/vapid_private.pem",
+  "vapid_email": "rkdsungjun3344@gmail.com",
+  "morning_notify_time": "09:00",
+  "overdue_grace_sec": 1800,
+  "ssl_cert": "src/server/cert.pem",
+  "ssl_key": "src/server/cert-key.pem"
 }
