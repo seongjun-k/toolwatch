@@ -23,11 +23,6 @@ _uid_lock = threading.Lock()
 _latest_uid = ""
 
 
-def _load_config() -> dict:
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)
-
-
 def _rfid_loop() -> None:
     """RC522 폴링 전용 스레드. 태그가 태깅될 때마다 최근 UID를 갱신한다.
     세션 유효기간(30초) 판단은 서버 책임이므로 여기서는 읽은 UID를 그대로 기록만 한다."""
@@ -69,7 +64,8 @@ def _capture_jpeg(camera: Picamera2) -> bytes:
 
 
 def run() -> None:
-    config = _load_config()
+    with open(CONFIG_PATH, encoding="utf-8") as f:
+        config = json.load(f)
     hw.init(config["relay_pins"])
     threading.Thread(target=_rfid_loop, daemon=True).start()
 
@@ -81,6 +77,8 @@ def run() -> None:
     url = config["server_url"]
     interval = config.get("capture_interval_sec", 3)
     session = requests.Session()
+    # 서버가 mkcert 사설 인증서 HTTPS로 기동되면 Pi는 CA를 모름 — 내부망이므로 검증 생략 허용
+    session.verify = config.get("tls_verify", True)
 
     try:
         while True:

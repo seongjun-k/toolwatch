@@ -7,8 +7,6 @@
 import sqlite3
 from pathlib import Path
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parent / "toolwatch.db"
-
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   uid          TEXT PRIMARY KEY,
@@ -39,16 +37,29 @@ CREATE TABLE IF NOT EXISTS events (
   loan_id   INTEGER REFERENCES loans(id),
   snapshot_path TEXT
 );
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  uid       TEXT NOT NULL REFERENCES users(uid),
+  endpoint  TEXT NOT NULL,
+  keys_json TEXT NOT NULL,
+  PRIMARY KEY (uid, endpoint)
+);
+
+CREATE TABLE IF NOT EXISTS sent_notices (
+  loan_id INTEGER NOT NULL REFERENCES loans(id),
+  kind    TEXT NOT NULL,
+  PRIMARY KEY (loan_id, kind)
+);
 """
 
 
-def get_conn(db_path=DEFAULT_DB_PATH):
+def get_conn(db_path):
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def init_db(db_path=DEFAULT_DB_PATH):
+def init_db(db_path):
     conn = get_conn(db_path)
     try:
         conn.executescript(SCHEMA)
@@ -165,6 +176,42 @@ def add_event(conn, event_type, tool, uid=None, loan_id=None, snapshot_path=None
     conn.execute(
         "INSERT INTO events (type, tool, uid, loan_id, snapshot_path) VALUES (?, ?, ?, ?, ?)",
         (event_type, tool, uid or None, loan_id, snapshot_path),
+    )
+    conn.commit()
+
+
+# --- push_subscriptions / sent_notices (E3) ---
+
+def add_subscription(conn, uid, endpoint, keys_json):
+    conn.execute(
+        "INSERT INTO push_subscriptions (uid, endpoint, keys_json) VALUES (?, ?, ?) "
+        "ON CONFLICT(uid, endpoint) DO UPDATE SET keys_json=excluded.keys_json",
+        (uid, endpoint, keys_json),
+    )
+    conn.commit()
+
+
+def remove_subscription(conn, endpoint):
+    conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
+    conn.commit()
+
+
+def get_subscriptions(conn, uid):
+    return conn.execute(
+        "SELECT uid, endpoint, keys_json FROM push_subscriptions WHERE uid = ?", (uid,)
+    ).fetchall()
+
+
+def has_notice(conn, loan_id, kind):
+    row = conn.execute(
+        "SELECT 1 FROM sent_notices WHERE loan_id = ? AND kind = ?", (loan_id, kind)
+    ).fetchone()
+    return row is not None
+
+
+def mark_notice(conn, loan_id, kind):
+    conn.execute(
+        "INSERT OR IGNORE INTO sent_notices (loan_id, kind) VALUES (?, ?)", (loan_id, kind)
     )
     conn.commit()
 
