@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   uid          TEXT PRIMARY KEY,
   name         TEXT NOT NULL,
   student_id   TEXT,
+  password_hash TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
@@ -70,6 +71,12 @@ def init_db(db_path):
             conn.commit()
         except sqlite3.OperationalError:
             pass
+        # 기존 DB에 password_hash 컬럼이 없으면 추가 — 이미 있으면 예외 무시
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
         # 학번은 학생 로그인 키 — 중복 등록 차단 (NULL은 SQLite 유니크 인덱스에서 중복 허용)
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_id ON users(student_id)"
@@ -101,17 +108,46 @@ def list_users_full(conn):
     return conn.execute("SELECT uid, name, student_id FROM users").fetchall()
 
 
-def find_uid_by_student(conn, student_id, name):
-    """학번+이름이 일치하는 사용자의 uid를 반환 (학생 로그인용). 없으면 None."""
+def get_user(conn, uid):
+    """UID로 사용자 존재 여부 확인 (카드 등록 시 중복 체크용)."""
+    return conn.execute("SELECT uid FROM users WHERE uid = ?", (uid,)).fetchone()
+
+
+def get_user_by_student(conn, student_id):
+    """학번으로 사용자를 조회 (학생 로그인/계정생성용). 없으면 None."""
     row = conn.execute(
-        "SELECT uid FROM users WHERE student_id = ? AND name = ?",
-        (student_id, name),
+        "SELECT uid, name, password_hash FROM users WHERE student_id = ?",
+        (student_id,),
     ).fetchone()
-    return row["uid"] if row else None
+    return row if row else None
+
+
+def set_user_password(conn, uid, password_hash):
+    conn.execute("UPDATE users SET password_hash = ? WHERE uid = ?", (password_hash, uid))
+    conn.commit()
 
 
 def delete_user(conn, uid):
     conn.execute("DELETE FROM users WHERE uid = ?", (uid,))
+    conn.commit()
+
+
+def create_pending_user(conn, student_id, name, password_hash):
+    """관리자 미등록 학번의 자가 가입 — uid를 "pending:<학번>" 자리표시자로 채워 RFID 카드 미등록 상태를 표시."""
+    uid = f"pending:{student_id}"
+    conn.execute(
+        "INSERT INTO users (uid, name, student_id, password_hash) VALUES (?, ?, ?, ?)",
+        (uid, name, student_id, password_hash),
+    )
+    conn.commit()
+    return uid
+
+
+def assign_uid(conn, old_uid, new_uid):
+    """관리자가 pending 계정에 실제 카드 UID를 배정 — users/push_subscriptions/loans 세 테이블을 한 트랜잭션으로 교체."""
+    conn.execute("UPDATE users SET uid = ? WHERE uid = ?", (new_uid, old_uid))
+    conn.execute("UPDATE push_subscriptions SET uid = ? WHERE uid = ?", (new_uid, old_uid))
+    conn.execute("UPDATE loans SET uid = ? WHERE uid = ?", (new_uid, old_uid))
     conn.commit()
 
 
@@ -150,24 +186,13 @@ def get_open_loans(conn):
     ).fetchall()
 
 
-def get_loans_by_uid(conn, uid, limit=30):
-    """학생용(E2) 본인 대여 목록: 진행중+최근 반납 이력을 out_at 내림차순으로 반환.
-    진행중/반납완료 분리와 개수 제한은 호출부(app.py)에서 처리한다."""
+def get_loans_by_uid(conn, uid):
+    """학생용(E2) 본인 대여 목록: 진행중+최근 반납 이력을 out_at 내림차순 최근 30건.
+    진행중/반납완료 분리는 호출부(app.py)에서 처리한다."""
     return conn.execute(
-        "SELECT * FROM loans WHERE uid = ? ORDER BY out_at DESC LIMIT ?",
-        (uid, limit),
+        "SELECT * FROM loans WHERE uid = ? ORDER BY out_at DESC LIMIT 30",
+        (uid,),
     ).fetchall()
-
-
-def set_loan_due(conn, loan_id, uid, due_at):
-    """uid까지 WHERE 조건에 넣어 본인 소유 loan만 갱신 (신뢰 경계 방어 — E2).
-    반환값(갱신된 행 수)이 0이면 loan이 존재하지 않거나 본인 소유가 아님."""
-    cur = conn.execute(
-        "UPDATE loans SET due_at = ? WHERE id = ? AND uid = ?",
-        (due_at, loan_id, uid),
-    )
-    conn.commit()
-    return cur.rowcount
 
 
 # --- events ---
