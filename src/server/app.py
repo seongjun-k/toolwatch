@@ -249,6 +249,10 @@ def login_required(view):
 
 @app.route("/frame", methods=["POST"])
 def receive_frame():
+    # 외부망 노출(터널) 시 무인증 /frame으로 가짜 프레임을 주입할 수 있으므로 Pi와 공유하는 토큰으로 차단
+    frame_token = CONFIG.get("frame_token")
+    if frame_token and request.headers.get("X-Frame-Token") != frame_token:
+        return jsonify({"error": "unauthorized"}), 401
     image_file = request.files.get("image")
     if image_file is None:
         return jsonify({"error": "image required"}), 400

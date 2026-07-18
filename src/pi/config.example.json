@@ -8,5 +8,6 @@
     "yellow": 6,
     "green": 13,
     "buzzer": 19
-  }
+  },
+  "frame_token": "CHANGE-ME"
 }
