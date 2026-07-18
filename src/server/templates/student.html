@@ -82,14 +82,9 @@
   .countdown { font-size: 1.3rem; font-weight: 800; margin-top: .35rem; font-variant-numeric: tabular-nums; }
   .countdown.is-overdue { color: var(--danger); }
   .countdown.is-ok { color: var(--ok); }
-  .due-missing { font-size: .9rem; color: var(--accent); font-weight: 700; margin-top: .35rem; }
 
   .meta { font-size: .82rem; color: var(--muted); margin-top: .4rem; }
   .due-form { display: flex; gap: .4rem; margin-top: .6rem; }
-  .due-form input[type="datetime-local"] {
-    /* min-width:0 없으면 datetime-local 고유 최소폭이 flex 축소를 막아 좁은 폰에서 가로 오버플로 발생 */
-    flex: 1; min-width: 0; padding: .4rem; border: 1px solid var(--border); border-radius: 6px; font-size: .85rem;
-  }
   .due-form button {
     background: var(--accent); color: var(--accent-ink); border: none; border-radius: 6px; padding: .4rem .8rem;
     font-size: .82rem; font-weight: 700; cursor: pointer;
@@ -123,17 +118,41 @@
   <div class="login-card">
     <h1><span class="mark" style="color:var(--accent)">toolwatch</span> 학생 로그인</h1>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
-    <form method="post" action="{{ url_for('student_login') }}">
+    <form method="post" action="{{ url_for('student_login') }}" id="login-form">
       <div class="field">
         <label for="student_id">학번</label>
         <input type="text" id="student_id" name="student_id" inputmode="numeric" autocomplete="off" required>
       </div>
       <div class="field">
-        <label for="name">이름</label>
-        <input type="text" id="name" name="name" autocomplete="off" required>
+        <label for="password">비밀번호</label>
+        <input type="password" id="password" name="password" minlength="4" maxlength="8" autocomplete="off" required>
       </div>
       <button type="submit" class="submit-btn">로그인</button>
     </form>
+    <p><a href="#" id="signup-toggle">계정 생성</a></p>
+    <form method="post" action="{{ url_for('student_signup') }}" id="signup-form" style="display:none">
+      <div class="field">
+        <label for="su-student_id">학번</label>
+        <input type="text" id="su-student_id" name="student_id" inputmode="numeric" autocomplete="off" required>
+      </div>
+      <div class="field">
+        <label for="su-name">이름</label>
+        <input type="text" id="su-name" name="name" autocomplete="off" required>
+      </div>
+      <div class="field">
+        <label for="su-password">비밀번호</label>
+        <input type="password" id="su-password" name="password" minlength="4" maxlength="8" autocomplete="off" required>
+      </div>
+      <button type="submit" class="submit-btn">계정 생성</button>
+    </form>
+    <script>
+      document.getElementById("signup-toggle").addEventListener("click", function (e) {
+        e.preventDefault();
+        document.getElementById("login-form").style.display = "none";
+        document.getElementById("signup-form").style.display = "block";
+        this.style.display = "none";
+      });
+    </script>
   </div>
 </div>
 
@@ -157,6 +176,9 @@
 
   <div id="live">
     <div class="section-title">대여하기</div>
+    {% if is_pending %}
+      <div class="banner" role="status">관리자의 카드 등록 대기 중 — 카드 등록 후 대여 가능</div>
+    {% endif %}
     {% if reservation %}
       <div class="row-item">
         <div class="row-bar"></div>
@@ -213,16 +235,9 @@
           </div>
           {% if loan.due_at %}
             <div class="countdown" data-due="{{ loan.due_at_input }}">계산 중…</div>
-          {% else %}
-            <div class="due-missing">기한을 설정해주세요</div>
           {% endif %}
           <div class="meta">대여 시각: {{ loan.out_at }}</div>
           <div class="meta">기한: {{ loan.due_at or '미설정' }}</div>
-          <form class="due-form" method="post" action="{{ url_for('student_set_due') }}">
-            <input type="hidden" name="loan_id" value="{{ loan.id }}">
-            <input type="datetime-local" name="due_at" value="{{ loan.due_at_input }}" required>
-            <button type="submit">기한 설정</button>
-          </form>
           {% if my_return_loan_id == loan.id and my_return %}
             {% if my_return.tagged %}
               <div class="meta">공구 인식 대기 중…</div>
@@ -349,7 +364,7 @@
   function refresh() {
     var current = document.getElementById('live');
     if (current.contains(document.activeElement) && document.activeElement !== document.body) {
-      return; // 입력 중(기한 설정 폼 등)에는 이번 갱신을 건너뛴다
+      return; // 입력 중(대여하기 시각 입력 등)에는 이번 갱신을 건너뛴다
     }
     fetch(window.location.href, { credentials: 'same-origin' })
       .then(function (res) { if (!res.ok) return null; return res.text(); })

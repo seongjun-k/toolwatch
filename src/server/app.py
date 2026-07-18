@@ -20,6 +20,7 @@ from pathlib import Path
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from PIL import Image
+from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
 import push
@@ -265,7 +266,9 @@ _login_fails_lock = threading.Lock()
 
 
 def _client_ip():
-    return request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+    # XFF의 첫 값은 클라이언트가 위조 가능 — 마지막 값(직전 프록시=Funnel이 붙인 실제 접속 IP)만 신뢰
+    # (위조 허용 시 로그인 잠금 우회 + _login_fails 무한 증식)
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[-1].strip()
 
 
 def login_blocked(ip):
@@ -554,6 +557,14 @@ def control():
                         flash("이미 사용 중인 학번입니다")
             elif action == "uid_delete":
                 db.delete_user(conn, request.form.get("uid", ""))
+            elif action == "uid_assign":
+                old_uid = request.form.get("old_uid", "")
+                new_uid = request.form.get("new_uid", "").strip()
+                if new_uid:
+                    if db.get_user(conn, new_uid):
+                        flash("이미 등록된 카드입니다")
+                    else:
+                        db.assign_uid(conn, old_uid, new_uid)
         finally:
             conn.close()
     return redirect(url_for("dashboard"))
@@ -587,20 +598,60 @@ def student_login():
             error = "시도가 너무 많습니다. 잠시 후 다시 시도하세요"
             return render_template("student.html", page="login", error=error)
         student_id = request.form.get("student_id", "").strip()
-        name = request.form.get("name", "").strip()
+        password = request.form.get("password", "")
         conn = db.get_conn(DB_PATH)
         try:
-            uid = db.find_uid_by_student(conn, student_id, name)
+            user = db.get_user_by_student(conn, student_id)
         finally:
             conn.close()
-        if uid:
+        if user and user["password_hash"] and check_password_hash(user["password_hash"], password):
             record_login_result(ip, True)
-            session["student_uid"] = uid
+            session["student_uid"] = user["uid"]
             return redirect(url_for("student_loans"))
         record_login_result(ip, False)
-        error = "등록된 학번/이름과 일치하지 않습니다"
+        if user and not user["password_hash"]:
+            error = "계정이 없습니다. 먼저 계정 생성을 해주세요"
+        else:
+            error = "등록된 학번/비밀번호와 일치하지 않습니다"
     elif session.get("student_uid"):
         return redirect(url_for("student_loans"))
+    return render_template("student.html", page="login", error=error)
+
+
+@app.route("/me/signup", methods=["POST"])
+def student_signup():
+    ip = _client_ip()
+    if login_blocked(ip):
+        error = "시도가 너무 많습니다. 잠시 후 다시 시도하세요"
+        return render_template("student.html", page="login", error=error)
+    student_id = request.form.get("student_id", "").strip()
+    name = request.form.get("name", "").strip()
+    password = request.form.get("password", "")
+    error = None
+    if not (4 <= len(password) <= 8):
+        error = "비밀번호는 4~8자리로 해주세요"
+    else:
+        conn = db.get_conn(DB_PATH)
+        try:
+            user = db.get_user_by_student(conn, student_id)
+            if not user:
+                # 관리자 미등록 학번 — pending 사용자로 자가 가입 (카드는 관리자가 나중에 등록)
+                uid = db.create_pending_user(conn, student_id, name, generate_password_hash(password))
+                record_login_result(ip, True)
+                session["student_uid"] = uid
+                return redirect(url_for("student_loans"))
+            elif user["name"] != name:
+                error = "관리자에게 등록된 학번/이름이 아닙니다"
+            elif user["password_hash"]:
+                error = "이미 계정이 있습니다"
+            else:
+                db.set_user_password(conn, user["uid"], generate_password_hash(password))
+                record_login_result(ip, True)
+                session["student_uid"] = user["uid"]
+                return redirect(url_for("student_loans"))
+        finally:
+            conn.close()
+    record_login_result(ip, False)
     return render_template("student.html", page="login", error=error)
 
 
@@ -610,6 +661,11 @@ def student_loans():
     uid = session["student_uid"]
     conn = db.get_conn(DB_PATH)
     try:
+        # 관리자가 카드를 등록하면 uid가 pending:<학번> → 실제 카드 UID로 바뀜 — 세션도 따라 갱신
+        if uid.startswith("pending:"):
+            user = db.get_user_by_student(conn, uid.split(":", 1)[1])
+            if user and user["uid"] != uid:
+                uid = session["student_uid"] = user["uid"]
         uid_names = db.list_users(conn)
         rows = db.get_loans_by_uid(conn, uid)
     finally:
@@ -656,7 +712,7 @@ def student_loans():
                 "tool": row["tool"],
                 "out_at": row["out_at"],
                 "due_at": due_at,
-                # datetime-local input value 형식(YYYY-MM-DDTHH:MM)으로 미리 채워줌
+                # 카운트다운 JS의 data-due 값 (YYYY-MM-DDTHH:MM, 로컬 시간)
                 "due_at_input": due_at.replace(" ", "T")[:16] if due_at else "",
                 # F8과 동일하게 판정은 check_overdue가 기록해 둔 플래그만 사용 (재계산 금지)
                 "overdue": bool(row["overdue_logged"]) and not bool(row["cleared"]),
@@ -669,6 +725,7 @@ def student_loans():
 
     return render_template(
         "student.html", page="loans", name=uid_names.get(uid, ""),
+        is_pending=uid.startswith("pending:"),
         open_loans=open_loans, returned_loans=returned_loans[:5],
         tool_labels=CONFIG.get("tool_labels", {}),
         tools=tools, reservation=reservation,
@@ -724,14 +781,11 @@ def student_return():
     loan_id = int(loan_id_raw)
 
     with _state_lock:
-        tool = None
-        for t, items in state["rented"].items():
-            for item in items:
-                if item.get("loan_id") == loan_id and item.get("uid") == uid:
-                    tool = t
-                    break
-            if tool:
-                break
+        tool = next(
+            (t for t, items in state["rented"].items() for item in items
+             if item.get("loan_id") == loan_id and item.get("uid") == uid),
+            None,
+        )
         if tool is not None:
             state["returns"][uid] = {
                 "tool": tool, "loan_id": loan_id, "expires_at": time.time() + 60, "tagged": False,
@@ -745,38 +799,6 @@ def student_return_cancel():
     uid = session["student_uid"]
     with _state_lock:
         state["returns"].pop(uid, None)
-    return redirect(url_for("student_loans"))
-
-
-@app.route("/me/due", methods=["POST"])
-@student_login_required
-def student_set_due():
-    uid = session["student_uid"]
-    loan_id_raw = request.form.get("loan_id", "")
-    due_raw = request.form.get("due_at", "")  # <input type="datetime-local"> 값: YYYY-MM-DDTHH:MM
-    if not loan_id_raw.isdigit() or not due_raw:
-        return redirect(url_for("student_loans"))
-    try:
-        due_dt = datetime.strptime(due_raw, "%Y-%m-%dT%H:%M")
-    except ValueError:
-        return redirect(url_for("student_loans"))
-    if due_dt.timestamp() <= time.time():  # 과거 시각 거부
-        return redirect(url_for("student_loans"))
-    loan_id = int(loan_id_raw)
-    due_str = due_dt.strftime("%Y-%m-%d %H:%M:%S")
-
-    with _state_lock:
-        conn = db.get_conn(DB_PATH)
-        try:
-            # uid까지 WHERE에 넣어 DB 레벨에서도 본인 소유 확인 (신뢰 경계, 생략 불가)
-            updated = db.set_loan_due(conn, loan_id, uid, due_str)
-        finally:
-            conn.close()
-        if updated:
-            for items in state["rented"].values():
-                for item in items:
-                    if item.get("loan_id") == loan_id:
-                        item["due_at"] = due_dt.timestamp()
     return redirect(url_for("student_loans"))
 
 
@@ -996,6 +1018,17 @@ def _selfcheck():
         assert list(restored.keys()) == ["driver"], restored
         assert restored["driver"][0]["loan_id"] == loan_id2
         assert restored["driver"][0]["unauth"] is True
+
+        # --- 자가 가입(pending) -> 관리자 카드 등록(assign_uid) ---
+        conn4 = db.get_conn(tmp_path)
+        pending_uid = db.create_pending_user(conn4, "99999", "김철수", "hash")
+        assert pending_uid == "pending:99999"
+        found = db.get_user_by_student(conn4, "99999")
+        assert found["uid"] == pending_uid and found["password_hash"] == "hash", found
+        db.assign_uid(conn4, pending_uid, "REALCARD1")
+        assert db.get_user(conn4, "REALCARD1") is not None
+        assert db.get_user(conn4, pending_uid) is None
+        conn4.close()
     finally:
         tmp_path.unlink(missing_ok=True)
 
