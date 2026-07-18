@@ -11,3 +11,4 @@ ultralytics
 flask
 pillow
 pywebpush
+waitress

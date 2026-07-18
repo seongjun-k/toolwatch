@@ -65,12 +65,15 @@
 | S4 | 경광등·부저 경고 | 녹색(정상) / 황색(정상 대여 중) / 적색+부저(미반납 초과 or 미확인 반출) |
 | S5 | 웹 대시보드 | 공구 상태 조회, 이력, 스냅샷, 재고·임계시간 설정, UID 관리, 경고 해제 |
 
-### 확장 기능 (E1~E2)
+### 확장 기능 (E1~E3)
 
 | # | 기능 | 설명 |
 |---|---|---|
-| E1 | SQLite DB | `users`/`loans`/`events` 3테이블, 재시작 시 대여 상태 복원 |
-| E2 | 학생용 모바일 웹 | `/me` — 본인 대여 현황 조회 + 건별 반납 기한 설정 |
+| E1 | SQLite DB | `users`/`loans`/`events` 등 5테이블, 재시작 시 대여 상태 복원 |
+| E2 | 학생용 모바일 웹 | `/me` — 학번+이름 로그인, 본인 대여 현황 조회 + 건별 반납 기한 설정 |
+| E3 | 웹 푸시 알림 | 대여/반납 즉시 알림 + 아침/기한/연체 리마인더 (pywebpush, 서비스 워커) |
+| PWA | 설치형 앱 | `/me`를 홈 화면에 추가하면 독립 앱으로 동작 (manifest + 아이콘) |
+| 외부 접속 | Tailscale Funnel | `https://<기기명>.<tailnet>.ts.net` 공인 HTTPS 주소로 외부망 접속 |
 
 ---
 
@@ -102,9 +105,10 @@
 | 구분 | 기술 |
 |---|---|
 | 객체 검출 | YOLO11n (ultralytics) |
-| 서버 | Python, Flask, SQLite |
+| 서버 | Python, Flask + waitress, SQLite, pywebpush |
 | Pi 클라이언트 | Python, picamera2, requests, gpiozero, mfrc522 |
-| 대시보드 | Jinja2 템플릿, 반응형 CSS |
+| 대시보드 | Jinja2 템플릿, 반응형 CSS, PWA(학생 페이지) |
+| 외부 노출 | Tailscale Funnel (TLS 종단, 서버 자체는 HTTP) |
 
 ---
 
@@ -116,20 +120,23 @@ toolwatch/
 │   ├── pi/                    # 라즈베리파이 엣지 클라이언트
 │   │   ├── client.py          # 메인 루프 (캡처 → POST → 경광등 구동)
 │   │   ├── hw.py              # 릴레이 4채널 제어 래퍼
-│   │   └── config.json        # Pi 설정 (서버 URL, 캡처 주기, GPIO 핀)
+│   │   └── config.example.json # Pi 설정 템플릿 (복사해 config.json으로, 시크릿 포함이라 실물은 gitignore)
 │   └── server/                # 추론 + 판정 + 대시보드 서버
-│       ├── app.py             # Flask 앱 (추론, 디바운스, RFID 세션, HMI)
+│       ├── app.py             # Flask 앱 (추론, 디바운스, RFID 세션, HMI, 리마인더 루프)
 │       ├── db.py              # SQLite 접근 계층
-│       ├── config.json        # 서버 설정 (모델 경로, 재고, 임계값 등)
+│       ├── push.py            # 웹 푸시 발송 + 리마인더 선별 (E3)
+│       ├── config.example.json # 서버 설정 템플릿 (복사해 config.json으로)
+│       ├── static/            # PWA manifest·아이콘, 서비스 워커(sw.js), 공통 CSS
 │       ├── templates/
 │       │   ├── dashboard.html # 관리자 대시보드
-│       │   └── student.html   # 학생용 대여 현황 페이지
+│       │   └── student.html   # 학생용 대여 현황 페이지 (PWA)
 │       └── snapshots/         # 반출 시 자동 저장되는 스냅샷 (gitignore)
 ├── model/                     # 학습된 YOLO 가중치 (best.pt)
 ├── dataset/                   # 학습 데이터 (gitignore)
 ├── docs/                      # 계획서, 구현계획, 레퍼런스 등
 ├── logs/                      # 실행 로그 (gitignore)
 ├── requirements.txt           # 서버·학습 호스트 의존성
+├── run_server.bat             # 서버 기동 배치파일 (더블클릭 실행)
 └── yolo11n.pt                 # 사전학습 모델 (개발용 폴백)
 ```
 
@@ -155,14 +162,24 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 # 의존성 설치
 pip install -r requirements.txt
 
+# 설정 파일 생성 (시크릿 채우기: hmi_password, secret_key, frame_token, VAPID 키)
+copy src\server\config.example.json src\server\config.json
+
 # 학습된 모델 배치
 # model/best.pt 에 YOLO 학습 결과물을 복사 (없으면 yolo11n.pt로 폴백)
 
-# 서버 실행
+# 서버 실행 (또는 run_server.bat 더블클릭)
 python src/server/app.py
 ```
 
-서버가 `http://0.0.0.0:5000` 에서 시작된다. 같은 네트워크의 브라우저에서 `http://<노트북IP>:5000` 으로 대시보드에 접속 가능.
+서버가 waitress로 `http://0.0.0.0:5000` 에서 시작된다. 같은 네트워크의 브라우저에서 `http://<노트북IP>:5000` 으로 대시보드에 접속 가능.
+
+**외부망 공개 (Tailscale Funnel):** 웹 푸시·PWA는 HTTPS가 필요하며, TLS는 Funnel이 종단한다.
+
+```bash
+tailscale funnel --bg http://localhost:5000
+# 발급 주소: https://<기기명>.<tailnet>.ts.net (관리 콘솔에서 Funnel·HTTPS Certificates 활성화 필요)
+```
 
 **셀프체크 (판정 로직 단위 테스트):**
 
@@ -178,8 +195,9 @@ pip install requests mfrc522
 
 # picamera2, gpiozero는 Raspberry Pi OS에 기본 포함
 
-# src/pi/config.json 에서 server_url을 서버 노트북 IP로 설정
-# 예: "server_url": "http://192.168.0.10:5000/frame"
+# config.example.json을 config.json으로 복사 후 server_url·frame_token 설정
+# (frame_token은 서버 config.json과 동일한 값 — /frame 인증용)
+# 예: "server_url": "http://192.168.0.2:5000/frame"
 
 # 클라이언트 실행
 cd src/pi
@@ -194,8 +212,9 @@ python client.py
 
 | 키 | 기본값 | 설명 |
 |---|---|---|
-| `server_url` | `http://192.168.0.10:5000/frame` | 서버 프레임 수신 엔드포인트 |
-| `capture_interval_sec` | `3` | 캡처 주기 (초) |
+| `server_url` | `http://<서버IP>:5000/frame` | 서버 프레임 수신 엔드포인트 (내부망) |
+| `frame_token` | — | `/frame` 인증 토큰 (서버와 동일 값) |
+| `capture_interval_sec` | `3` | 기본 캡처 주기 (초) — 서버가 응답 `interval`로 동적 조정 |
 | `jpeg_quality` | `80` | JPEG 압축 품질 |
 | `relay_pins` | `{red:5, yellow:6, green:13, buzzer:19}` | GPIO 핀 번호 |
 
@@ -210,8 +229,14 @@ python client.py
 | `roi` | `null` | ROI 크롭 좌표 `{x1,y1,x2,y2}` (null이면 전체) |
 | `registered_stock` | `{nipper:1, driver:1, plier:1, hex_key:1}` | 공구별 등록 재고 수 |
 | `rfid_session_sec` | `30` | RFID 세션 유효 시간 (초) |
-| `overdue_sec` | `7200` | 미반납 임계 시간 (초, 기본 2시간) |
-| `hmi_password` | `toolwatch1234` | 대시보드 로그인 비밀번호 |
+| `overdue_sec` | `7200` | 미반납 임계 시간 (초, 기본 2시간) — E2 반납 기한 설정 시 기한 우선 |
+| `hmi_password` | — | 대시보드 로그인 비밀번호 (직접 설정) |
+| `frame_token` | — | `/frame` 인증 토큰 (Pi와 동일 값) |
+| `fast_interval_sec` | `0.5` | 변화 관측 중 고속 캡처 주기 (적응형 촬영) |
+| `tool_labels` | 공구별 한국어명 | 알림·학생 페이지 표시용 라벨 |
+| `vapid_public_key` / `vapid_private_key_file` / `vapid_email` | — | 웹 푸시 VAPID 키 (E3) |
+| `morning_notify_time` | `09:00` | 반납일 아침 리마인더 시각 |
+| `overdue_grace_sec` | `1800` | 기한 경과 후 연체 알림까지 유예 (초) |
 
 ---
 
@@ -258,6 +283,7 @@ python client.py
 Pi 클라이언트가 호출하는 유일한 엔드포인트.
 
 **요청:**
+- `X-Frame-Token` (헤더): 공유 인증 토큰 (불일치 시 401)
 - `image` (multipart file): JPEG 프레임
 - `uid` (form field): 최근 태그된 RFID UID (없으면 빈 문자열)
 
@@ -265,9 +291,12 @@ Pi 클라이언트가 호출하는 유일한 엔드포인트.
 ```json
 {
   "light": "green",
-  "buzzer": "off"
+  "buzzer": "off",
+  "interval": 3
 }
 ```
+
+`interval`은 서버가 지시하는 다음 캡처 주기 — 변화 관측 중이면 0.5초로 단축(적응형 촬영).
 
 ### `GET /`
 

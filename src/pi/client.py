@@ -77,8 +77,6 @@ def run() -> None:
     url = config["server_url"]
     interval = config.get("capture_interval_sec", 3)
     session = requests.Session()
-    # 서버가 mkcert 사설 인증서 HTTPS로 기동되면 Pi는 CA를 모름 — 내부망이므로 검증 생략 허용
-    session.verify = config.get("tls_verify", True)
     if config.get("frame_token"):
         session.headers["X-Frame-Token"] = config["frame_token"]  # 서버 /frame 인증 토큰 (외부망 노출 대비)
 

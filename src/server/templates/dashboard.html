@@ -468,7 +468,12 @@
                 <td>{{ u.student_id or '' }}</td>
                 <td>{{ u.name }}</td>
                 <td>
-                  <form method="post" action="{{ url_for('control') }}">
+                  <form method="post" action="{{ url_for('control') }}" style="display:inline">
+                    <input type="hidden" name="action" value="push_test">
+                    <input type="hidden" name="uid" value="{{ u.uid }}">
+                    <button type="submit">알림 테스트</button>
+                  </form>
+                  <form method="post" action="{{ url_for('control') }}" style="display:inline">
                     <input type="hidden" name="action" value="uid_delete">
                     <input type="hidden" name="uid" value="{{ u.uid }}">
                     <button type="submit" class="danger">삭제</button>
