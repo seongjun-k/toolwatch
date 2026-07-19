@@ -148,6 +148,7 @@ def receive_frame():
 
         state.state["latest_frame"] = frame_bytes
         state.state["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        core.save_collect_frame(frame_bytes)  # 데이터 수집 모드 — 판정 흐름 밖, 저장만
         state.state["tool_status"] = {
             tool: {
                 "registered": registered,

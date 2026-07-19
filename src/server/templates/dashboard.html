@@ -439,6 +439,15 @@
       </div>
 
       <div class="card">
+        <p class="eyebrow">데이터 수집 모드</p>
+        <p>{% if collecting %}수집 중 (저장 {{ collect_count }}장){% else %}중지됨{% endif %}</p>
+        <form method="post" action="{{ url_for('admin.control') }}">
+          <input type="hidden" name="action" value="{{ 'collect_stop' if collecting else 'collect_start' }}">
+          <button type="submit">{{ '수집 중지' if collecting else '수집 시작' }}</button>
+        </form>
+      </div>
+
+      <div class="card">
         <p class="eyebrow">미반납 임계 시간(초)</p>
         <form method="post" action="{{ url_for('admin.control') }}">
           <input type="hidden" name="action" value="overdue_sec">
