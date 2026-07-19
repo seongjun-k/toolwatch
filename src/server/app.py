@@ -557,6 +557,10 @@ def control():
                         flash("이미 사용 중인 학번입니다")
             elif action == "uid_delete":
                 db.delete_user(conn, request.form.get("uid", ""))
+            elif action == "pw_reset":
+                # 비밀번호 분실 대응: 해시를 비워 두면 학생이 "계정 생성"으로 다시 설정한다
+                db.set_user_password(conn, request.form.get("uid", ""), None)
+                flash("비밀번호를 초기화했습니다 — 학생이 '계정 생성'으로 재설정하면 됩니다")
             elif action == "uid_assign":
                 old_uid = request.form.get("old_uid", "")
                 new_uid = request.form.get("new_uid", "").strip()

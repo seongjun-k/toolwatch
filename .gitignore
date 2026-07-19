@@ -33,3 +33,6 @@ src/server/cert-key.pem
 # 실제 설정(시크릿 포함) — config.example.json을 복사해 채워서 사용
 src/server/config.json
 src/pi/config.json
+
+# DB 스냅샷 백업 (run_server.bat 기동 시 생성)
+backups/
