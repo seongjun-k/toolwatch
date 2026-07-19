@@ -317,6 +317,10 @@ def receive_frame():
     uid = request.form.get("uid", "")
     pending_pushes = []  # (uid, body) — 발송은 락 해제 후 flush_pushes에서
 
+    # YOLO 추론은 state를 읽지 않는 순수 계산 — 락 안에서 돌리면 추론 시간(CPU 수백 ms~초)만큼
+    # 대시보드·학생 페이지가 전부 블로킹되므로 반드시 락 진입 전에 수행한다 (flush_pushes와 같은 원칙)
+    detected_counts = detect_tools(frame_bytes)
+
     with _state_lock:
         now = time.time()
         conn = db.get_conn(DB_PATH)
@@ -326,8 +330,6 @@ def receive_frame():
             # 반납 대기 중인 학생이 이번 프레임에 카드를 태그했으면 표시 (IN 미확정 시 경보 판정용)
             if uid and uid in state["returns"] and state["returns"][uid]["expires_at"] > now:
                 state["returns"][uid]["tagged"] = True
-
-            detected_counts = detect_tools(frame_bytes)
 
             global _debounce_state
             _debounce_state, events = judge_tools(
@@ -1104,6 +1106,12 @@ if __name__ == "__main__":
             state["rented"] = restore_rented_state(_conn)  # 재시작 내성: 미반납 loan으로 큐 복원
         finally:
             _conn.close()
+        # 복원된 대여 수로 디바운스 기준선을 시드 — 비워 두면 confirmed=0에서 출발해
+        # 이미 반출된 공구에 대해 유령 OUT이 재확정되어 loan이 중복 생성된다
+        _debounce_state = {
+            tool: {"confirmed": len(items), "candidate": 0, "streak": 0}
+            for tool, items in state["rented"].items()
+        }
         threading.Thread(target=reminder_loop, daemon=True).start()
         from waitress import serve  # 개발 서버 대체 (TLS는 Funnel이 종단, 계획 외 옵션 튜닝 금지)
         serve(app, host=CONFIG.get("host", "0.0.0.0"), port=CONFIG.get("port", 5000), threads=8)
