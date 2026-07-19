@@ -39,6 +39,10 @@ state = {
     "reservations": {},  # {uid: {"tool","due_epoch","due_str","expires_at"}} — /me/reserve 60초 예약
     "returns": {},  # {uid: {"tool","loan_id","expires_at","tagged"}} — /me/return 60초 반납 대기
     "return_alarm_until": 0,  # epoch, 이 시각까지 반납 실패 경보(적색+unauth 부저) 강제
+    "collecting": False,  # 데이터 수집 모드 on/off
+    "collect_dir": None,  # Path, 수집 세션 폴더 (dataset/raw/YYYYMMDD_HHMMSS)
+    "collect_count": 0,  # 현재 세션 저장 장수
+    "collect_last_size": 0,  # 유사 프레임 솎기용 직전 저장 프레임 바이트 크기
 }
 debounce_state = {}
 session_at_streak = {}  # 공구별 스트릭 시작 시점의 rfid_session 스냅샷 (F6: 확정 시점이 아닌 시작 시점 세션으로 귀속)

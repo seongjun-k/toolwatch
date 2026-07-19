@@ -11,6 +11,7 @@ from datetime import datetime
 from PIL import Image
 
 import db
+import state
 from state import CONFIG, ROOT_DIR, SNAPSHOT_DIR
 
 _model = None  # ultralytics 모델 캐시, 최초 추론 시점까지 지연 로딩
@@ -167,6 +168,22 @@ def save_snapshot(tool, frame_bytes):
     filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{tool}.jpg"
     (SNAPSHOT_DIR / filename).write_bytes(frame_bytes)
     return f"{SNAPSHOT_DIR.relative_to(ROOT_DIR).as_posix()}/{filename}"
+
+
+def save_collect_frame(frame_bytes):
+    """데이터 수집 모드 ON일 때 /frame 프레임을 세션 폴더에 저장한다. YOLO 판정 흐름과는 무관.
+    # ponytail: 유사 프레임 필터가 JPEG 바이트 크기 차이만 봄 — 크기는 비슷한데 장면이 다른 경우는
+    # 못 걸러낸다. 정교화 필요하면 프레임 해시/SSIM 비교로 교체.
+    """
+    if not state.state["collecting"]:
+        return
+    last_size = state.state["collect_last_size"]
+    if last_size and abs(len(frame_bytes) - last_size) / last_size < 0.01:
+        return
+    filename = f"{datetime.now().strftime('%H%M%S')}.jpg"
+    (state.state["collect_dir"] / filename).write_bytes(frame_bytes)
+    state.state["collect_last_size"] = len(frame_bytes)
+    state.state["collect_count"] += 1
 
 
 def now_str():
