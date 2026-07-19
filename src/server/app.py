@@ -57,6 +57,7 @@ state = {
 _debounce_state = {}
 _session_at_streak = {}  # 공구별 스트릭 시작 시점의 rfid_session 스냅샷 (F6: 확정 시점이 아닌 시작 시점 세션으로 귀속)
 _frame_at_streak = {}  # 공구별 스트릭 시작 시점의 frame_bytes 스냅샷 (반출 확정 시점엔 손이 이미 사라져 증거로 부적합)
+_prev_frame_at_streak = {}  # 공구별 스트릭 시작 직전 프레임 — 공구가 아직 있던(=집는 동작 중일 확률이 가장 높은) 장면
 _model = None  # ultralytics 모델 캐시, 최초 추론 시점까지 지연 로딩
 # ponytail: 전역 락 — 요청 빈도(3초 주기+대시보드)가 낮아 충분, 병목 시 세분화
 _state_lock = threading.Lock()
@@ -342,6 +343,7 @@ def receive_frame():
                 if d_state["streak"] == 1:
                     _session_at_streak[tool] = state["rfid_session"]
                     _frame_at_streak[tool] = frame_bytes
+                    _prev_frame_at_streak[tool] = state["latest_frame"]  # 첫 프레임이면 None
 
             uid_names = db.list_users(conn)
             for event in events:
@@ -349,6 +351,10 @@ def receive_frame():
                 if event["type"] == "OUT":
                     # 확정 프레임 대신 감소가 처음 관측된(streak=1) 프레임을 증거로 저장 — 확정 시점엔 손이 이미 사라져 있음
                     snapshot_path = save_snapshot(tool, _frame_at_streak.get(tool, frame_bytes))
+                    # 직전 프레임(공구가 아직 있던 장면)도 함께 저장 — 평상 주기 3초 특성상 감소 관측
+                    # 프레임엔 사람이 이미 화각 밖일 수 있어, 집는 동작이 담긴 직전 장면이 증거 가치가 더 높다
+                    prev_bytes = _prev_frame_at_streak.get(tool)
+                    prev_path = save_snapshot(f"{tool}_prev", prev_bytes) if prev_bytes else snapshot_path
                     attributed_uid, name, unauth = attribute_out(_session_at_streak.get(tool), uid_names)
 
                     # 예약 대여: 60초 내 본인 카드로 예약한 공구를 반출하면 반납 기한을 loan에 바로 반영
@@ -364,7 +370,8 @@ def receive_frame():
                     db.add_event(conn, "OUT", tool, uid=attributed_uid or "", loan_id=loan_id, snapshot_path=snapshot_path)
                     if unauth:
                         # OUT 행은 그대로 두고 미확인 반출만 별도 행으로 추가 기록 (대시보드 이력에서 구분용)
-                        db.add_event(conn, "UNAUTH", tool, uid=attributed_uid or "", loan_id=loan_id, snapshot_path=snapshot_path)
+                        # UNAUTH 행에는 직전 프레임을 연결 — OUT 행(감소 관측 장면)과 함께 이력에서 두 장 모두 열람 가능
+                        db.add_event(conn, "UNAUTH", tool, uid=attributed_uid or "", loan_id=loan_id, snapshot_path=prev_path)
                     if attributed_uid:
                         tool_label = CONFIG.get("tool_labels", {}).get(tool, tool)
                         pending_pushes.append((attributed_uid, f"{tool_label} 대여 처리됨"))
