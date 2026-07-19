@@ -202,7 +202,7 @@
   <section class="login-card" aria-labelledby="login-h">
     <h1 id="login-h"><span class="mark">toolwatch</span> 대시보드</h1>
     <p class="login-sub">실습실 공구 반납 감시 시스템</p>
-    <form class="login-form" method="post" action="{{ url_for('login') }}">
+    <form class="login-form" method="post" action="{{ url_for('admin.login') }}">
       <label>비밀번호:
         <input type="password" name="password" autocomplete="current-password" autofocus>
       </label>
@@ -252,7 +252,7 @@
       <span class="live-dot"></span><span class="live-label">신호 없음</span>
     </span>
     {% endif %}
-    <form method="post" action="{{ url_for('logout') }}"><button type="submit" class="ghost">로그아웃</button></form>
+    <form method="post" action="{{ url_for('admin.logout') }}"><button type="submit" class="ghost">로그아웃</button></form>
   </div>
 </header>
 
@@ -365,7 +365,7 @@
               </tbody>
             </table>
           </div>
-          <form method="post" action="{{ url_for('control') }}" style="margin-top:.9rem;">
+          <form method="post" action="{{ url_for('admin.control') }}" style="margin-top:.9rem;">
             <input type="hidden" name="action" value="clear_warnings">
             <button type="submit" class="ghost">경고 수동 해제</button>
           </form>
@@ -407,7 +407,7 @@
               <td>{{ config.tool_labels.get(row['공구'], row['공구']) }}</td>
               <td class="mono">{{ row['UID'] }}</td>
               <td>{{ row['이름'] }}</td>
-              <td>{% if row.snapshot_filename %}<a href="{{ url_for('snapshot_file', filename=row.snapshot_filename) }}" target="_blank" rel="noopener">보기</a>{% endif %}</td>
+              <td>{% if row.snapshot_filename %}<a href="{{ url_for('admin.snapshot_file', filename=row.snapshot_filename) }}" target="_blank" rel="noopener">보기</a>{% endif %}</td>
             </tr>
             {% else %}
             <tr><td class="empty" colspan="6">이력 없음</td></tr>
@@ -424,7 +424,7 @@
     <div class="set-grid">
       <div class="card">
         <p class="eyebrow">등록 재고</p>
-        <form method="post" action="{{ url_for('control') }}">
+        <form method="post" action="{{ url_for('admin.control') }}">
           <input type="hidden" name="action" value="stock">
           <div class="stock-list">
             {% for tool, count in config.registered_stock.items() %}
@@ -440,7 +440,7 @@
 
       <div class="card">
         <p class="eyebrow">미반납 임계 시간(초)</p>
-        <form method="post" action="{{ url_for('control') }}">
+        <form method="post" action="{{ url_for('admin.control') }}">
           <input type="hidden" name="action" value="overdue_sec">
           <div class="field-row">
             <label class="field">
@@ -472,24 +472,24 @@
                 <td>{{ u.name }}</td>
                 <td>
                   {% if u.uid.startswith('pending:') %}
-                  <form method="post" action="{{ url_for('control') }}" style="display:inline">
+                  <form method="post" action="{{ url_for('admin.control') }}" style="display:inline">
                     <input type="hidden" name="action" value="uid_assign">
                     <input type="hidden" name="old_uid" value="{{ u.uid }}">
                     <input type="text" name="new_uid" placeholder="카드 UID">
                     <button type="submit">카드 등록</button>
                   </form>
                   {% endif %}
-                  <form method="post" action="{{ url_for('control') }}" style="display:inline">
+                  <form method="post" action="{{ url_for('admin.control') }}" style="display:inline">
                     <input type="hidden" name="action" value="push_test">
                     <input type="hidden" name="uid" value="{{ u.uid }}">
                     <button type="submit">알림 테스트</button>
                   </form>
-                  <form method="post" action="{{ url_for('control') }}" style="display:inline">
+                  <form method="post" action="{{ url_for('admin.control') }}" style="display:inline">
                     <input type="hidden" name="action" value="pw_reset">
                     <input type="hidden" name="uid" value="{{ u.uid }}">
                     <button type="submit" class="ghost" style="min-height:36px; padding:.35rem .8rem">비번 초기화</button>
                   </form>
-                  <form method="post" action="{{ url_for('control') }}" style="display:inline">
+                  <form method="post" action="{{ url_for('admin.control') }}" style="display:inline">
                     <input type="hidden" name="action" value="uid_delete">
                     <input type="hidden" name="uid" value="{{ u.uid }}">
                     <button type="submit" class="danger">삭제</button>
@@ -502,7 +502,7 @@
             </tbody>
           </table>
         </div>
-        <form method="post" action="{{ url_for('control') }}">
+        <form method="post" action="{{ url_for('admin.control') }}">
           <input type="hidden" name="action" value="uid_add">
           <div class="field-row">
             <label class="field"><span>UID</span><input type="text" name="uid" placeholder="예: 04A2B1C3"></label>

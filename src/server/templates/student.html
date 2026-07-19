@@ -118,7 +118,7 @@
   <div class="login-card">
     <h1><span class="mark" style="color:var(--accent)">toolwatch</span> 학생 로그인</h1>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
-    <form method="post" action="{{ url_for('student_login') }}" id="login-form">
+    <form method="post" action="{{ url_for('student.student_login') }}" id="login-form">
       <div class="field">
         <label for="student_id">학번</label>
         <input type="text" id="student_id" name="student_id" inputmode="numeric" autocomplete="off" required>
@@ -130,7 +130,7 @@
       <button type="submit" class="submit-btn">로그인</button>
     </form>
     <p><a href="#" id="signup-toggle">계정 생성</a></p>
-    <form method="post" action="{{ url_for('student_signup') }}" id="signup-form" style="display:none">
+    <form method="post" action="{{ url_for('student.student_signup') }}" id="signup-form" style="display:none">
       <div class="field">
         <label for="su-student_id">학번</label>
         <input type="text" id="su-student_id" name="student_id" inputmode="numeric" autocomplete="off" placeholder="예: 30401" required>
@@ -162,7 +162,7 @@
   <div class="right">
     <span>{{ name }}님</span>
     <button type="button" id="push-toggle" style="display:none">알림 켜기</button>
-    <form method="post" action="{{ url_for('student_login') }}" style="margin:0">
+    <form method="post" action="{{ url_for('student.student_login') }}" style="margin:0">
       <input type="hidden" name="action" value="logout">
       <button type="submit">로그아웃</button>
     </form>
@@ -187,7 +187,7 @@
             <span class="tool-name">{{ reservation.tool_label }} 예약됨</span>
           </div>
           <div class="meta">{{ reservation.remaining_sec }}초 안에 카드를 태그하세요</div>
-          <form class="due-form" method="post" action="{{ url_for('student_reserve_cancel') }}">
+          <form class="due-form" method="post" action="{{ url_for('student.student_reserve_cancel') }}">
             <button type="submit">예약 취소</button>
           </form>
         </div>
@@ -196,7 +196,7 @@
       <div class="row-item">
         <div class="row-bar"></div>
         <div class="row-body">
-          <form class="due-form" method="post" action="{{ url_for('student_reserve') }}" style="flex-direction:column; align-items:stretch">
+          <form class="due-form" method="post" action="{{ url_for('student.student_reserve') }}" style="flex-direction:column; align-items:stretch">
             <div class="tool-tabs">
               {% for t in tools %}
               <label class="tool-tab">
@@ -244,11 +244,11 @@
             {% else %}
               <div class="meta">카드를 태그하고 공구를 거치대에 걸어주세요 ({{ my_return.remaining_sec }}초)</div>
             {% endif %}
-            <form class="due-form" method="post" action="{{ url_for('student_return_cancel') }}">
+            <form class="due-form" method="post" action="{{ url_for('student.student_return_cancel') }}">
               <button type="submit">취소</button>
             </form>
           {% else %}
-            <form class="due-form" method="post" action="{{ url_for('student_return') }}">
+            <form class="due-form" method="post" action="{{ url_for('student.student_return') }}">
               <input type="hidden" name="loan_id" value="{{ loan.id }}">
               <button type="submit">반납하기</button>
             </form>
@@ -438,7 +438,7 @@
         if (r.sub) {
           var endpoint = r.sub.endpoint;
           r.sub.unsubscribe().then(function () {
-            fetch("{{ url_for('student_push_unsubscribe') }}", {
+            fetch("{{ url_for('student.student_push_unsubscribe') }}", {
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ endpoint: endpoint }),
             }).then(refreshButtonLabel);
@@ -447,13 +447,13 @@
         }
         Notification.requestPermission().then(function (perm) {
           if (perm !== "granted") return;
-          fetch("{{ url_for('student_vapid') }}").then(function (res) { return res.json(); }).then(function (data) {
+          fetch("{{ url_for('student.student_vapid') }}").then(function (res) { return res.json(); }).then(function (data) {
             return r.reg.pushManager.subscribe({
               userVisibleOnly: true,
               applicationServerKey: urlBase64ToUint8Array(data.publicKey),
             });
           }).then(function (sub) {
-            return fetch("{{ url_for('student_push_subscribe') }}", {
+            return fetch("{{ url_for('student.student_push_subscribe') }}", {
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify(sub.toJSON()),
             });
