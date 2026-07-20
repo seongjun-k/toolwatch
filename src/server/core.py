@@ -180,8 +180,12 @@ def save_collect_frame(frame_bytes):
     last_size = state.state["collect_last_size"]
     if last_size and abs(len(frame_bytes) - last_size) / last_size < 0.01:
         return
-    filename = f"{datetime.now().strftime('%H%M%S')}.jpg"
-    (state.state["collect_dir"] / filename).write_bytes(frame_bytes)
+    # 디바운스 중엔 0.5초 주기라 초 단위 이름은 같은 초 프레임을 덮어씀 — 마이크로초 포함
+    filename = f"{datetime.now().strftime('%H%M%S_%f')}.jpg"
+    try:
+        (state.state["collect_dir"] / filename).write_bytes(frame_bytes)
+    except OSError:
+        return  # 수집 실패(디스크 부족·폴더 삭제)가 /frame 판정 흐름을 죽이면 안 됨
     state.state["collect_last_size"] = len(frame_bytes)
     state.state["collect_count"] += 1
 
