@@ -11,12 +11,12 @@ from pywebpush import WebPushException, webpush
 import db
 
 
-def send_push(conn, uid, title, body, config):
+def send_push(conn, uid, title, body, config, vapid_key_path):
     """uid의 모든 구독에 발송. 만료 구독(410/404)은 DB에서 제거, 그 외 실패는 로그만."""
     subs = db.get_subscriptions(conn, uid)
     if not subs:
         return
-    with open(config["vapid_private_key_file"], encoding="utf-8") as f:
+    with open(vapid_key_path, encoding="utf-8") as f:
         private_key = f.read()
     claims = {"sub": "mailto:" + config["vapid_email"]}
     payload = json.dumps({"title": title, "body": body}, ensure_ascii=False)

@@ -9,7 +9,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 
 import db
 import push
-from state import CONFIG, DB_PATH, ROOT_DIR, SNAPSHOT_DIR, client_ip, debounce_state, login_blocked, record_login_result, save_config, state, state_lock
+from state import CONFIG, DB_PATH, ROOT_DIR, SNAPSHOT_DIR, VAPID_KEY_PATH, client_ip, debounce_state, login_blocked, record_login_result, save_config, state, state_lock
 
 bp = Blueprint("admin", __name__)
 
@@ -96,7 +96,7 @@ def control():
         try:
             subs = db.get_subscriptions(conn, uid)
             if subs:
-                push.send_push(conn, uid, "toolwatch", "알림 테스트입니다", CONFIG)
+                push.send_push(conn, uid, "toolwatch", "알림 테스트입니다", CONFIG, VAPID_KEY_PATH)
                 flash(f"테스트 알림 발송 (구독 {len(subs)}건)")
             else:
                 flash("이 사용자는 알림 구독이 없습니다 (학생 페이지에서 '알림 켜기' 필요)")
