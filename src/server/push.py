@@ -16,8 +16,8 @@ def send_push(conn, uid, title, body, config, vapid_key_path):
     subs = db.get_subscriptions(conn, uid)
     if not subs:
         return
-    with open(vapid_key_path, encoding="utf-8") as f:
-        private_key = f.read()
+    # pywebpush는 인자가 실제 파일 경로일 때만 PEM 파서를 탄다 — 내용을 읽어 넘기면
+    # raw base64url로 오인해 ASN.1 파싱 에러가 난다.
     claims = {"sub": "mailto:" + config["vapid_email"]}
     payload = json.dumps({"title": title, "body": body}, ensure_ascii=False)
     for sub in subs:
@@ -28,7 +28,7 @@ def send_push(conn, uid, title, body, config, vapid_key_path):
                     "keys": json.loads(sub["keys_json"]),
                 },
                 data=payload,
-                vapid_private_key=private_key,
+                vapid_private_key=vapid_key_path,
                 vapid_claims=dict(claims),
             )
         except WebPushException as e:
