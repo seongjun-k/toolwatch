@@ -4,6 +4,8 @@
   "confidence_threshold": 0.5,
   "debounce_frames": 3,
   "fast_interval_sec": 0.5,
+  "imgsz": null,
+  "server_threads": 8,
   "roi": null,
   "registered_stock": {
     "nipper": 1,

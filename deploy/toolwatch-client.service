@@ -1,0 +1,15 @@
+[Unit]
+Description=toolwatch Pi edge client (camera + RFID)
+After=network-online.target toolwatch-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__REPO__
+ExecStart=__REPO__/.venv/bin/python __REPO__/src/pi/client.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

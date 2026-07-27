@@ -1,0 +1,16 @@
+[Unit]
+Description=toolwatch server (Flask + YOLO inference)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__REPO__
+ExecStartPre=-__REPO__/deploy/backup_db.sh
+ExecStart=__REPO__/.venv/bin/python __REPO__/src/server/app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -70,7 +70,11 @@ def run() -> None:
     threading.Thread(target=_rfid_loop, daemon=True).start()
 
     camera = Picamera2()
-    camera.configure(camera.create_still_configuration())
+    # 센서 최대 해상도(8~12MP)는 낭비 — 서버가 어차피 640으로 리사이즈해 추론한다.
+    # 현장에서 랙이 프레임을 꽉 채우게 설치한 뒤, 여백이 남으면 서버 config의 roi로 잘라낸다
+    # (roi 크롭이 640 리사이즈보다 먼저라 실효 해상도가 올라감).
+    capture_size = tuple(config.get("capture_size", [1920, 1080]))
+    camera.configure(camera.create_still_configuration(main={"size": capture_size}))
     camera.options["quality"] = config.get("jpeg_quality", 80)
     camera.start()
 
