@@ -1,6 +1,7 @@
 {
   "server_url": "http://<서버IP>:5000/frame",
   "capture_interval_sec": 3,
+  "capture_size": [1920, 1080],
   "jpeg_quality": 80,
   "relay_pins": {
     "red": 5,

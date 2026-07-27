@@ -157,7 +157,9 @@ def detect_tools(frame_bytes):
     if roi:
         image = image.crop((roi["x1"], roi["y1"], roi["x2"], roi["y2"]))
 
-    results = get_model()(image, conf=CONFIG["confidence_threshold"], verbose=False)
+    # Pi 4 CPU에서 시간 초과 시 imgsz를 416/320으로 낮추는 노브 (없으면 ultralytics 기본 640)
+    extra = {"imgsz": CONFIG.get("imgsz")} if CONFIG.get("imgsz") else {}
+    results = get_model()(image, conf=CONFIG["confidence_threshold"], verbose=False, **extra)
     r = results[0]
     return dict(Counter(r.names[int(c)] for c in r.boxes.cls.tolist()))
 

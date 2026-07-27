@@ -450,4 +450,4 @@ if __name__ == "__main__":
         })
         threading.Thread(target=reminder_loop, daemon=True).start()
         from waitress import serve  # 개발 서버 대체 (TLS는 Funnel이 종단, 계획 외 옵션 튜닝 금지)
-        serve(app, host=CONFIG.get("host", "0.0.0.0"), port=CONFIG.get("port", 5000), threads=8)
+        serve(app, host=CONFIG.get("host", "0.0.0.0"), port=CONFIG.get("port", 5000), threads=CONFIG.get("server_threads", 8))
