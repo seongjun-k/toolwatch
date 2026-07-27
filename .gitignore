@@ -36,3 +36,6 @@ src/pi/config.json
 
 # DB 스냅샷 백업 (run_server.bat 기동 시 생성)
 backups/
+
+# 수집 모드 프레임 데이터 — 로컬 전용
+_workspace/
