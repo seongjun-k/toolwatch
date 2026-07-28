@@ -3,24 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23c2410c'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3Et%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%2316191a'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3Et%3C/text%3E%3C/svg%3E">
 <title>toolwatch 내 대여 현황</title>
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-<meta name="theme-color" content="#23241f">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css">
+<meta name="theme-color" content="#16191a">
 <link rel="stylesheet" href="{{ url_for('static', filename='toolwatch.css') }}">
 <style>
-  :root {
-    --header-bg: #23241f;
-  }
-
-  .topbar {
-    background: var(--header-bg); color: #fff;
-    padding: .9rem 1rem; display: flex; align-items: center; justify-content: space-between;
-  }
-  .topbar .logo { font-weight: 800; letter-spacing: -.01em; }
-  .topbar .logo .mark { color: var(--accent); }
-  .topbar .right { display: flex; align-items: center; gap: .75rem; font-size: .85rem; }
+  .topbar { background: var(--ink); color: var(--zinc-surface); padding: .7rem 1rem; }
+  .topbar-inner { max-width: 480px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: nowrap; }
+  .topbar .right { display: flex; align-items: center; gap: .75rem; font-size: .85rem; flex: none; }
+  .topbar .user-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .topbar button {
     background: none; border: 1px solid rgba(255,255,255,.4); color: #fff;
     border-radius: 8px; padding: .3rem .6rem; font-size: .8rem; cursor: pointer;
@@ -30,85 +22,41 @@
 
   /* ---- 상태 변화 배너 ---- */
   #banner-area { position: sticky; top: 0; z-index: 30; }
-  .banner {
-    display: flex; align-items: center; justify-content: space-between; gap: .6rem;
-    padding: .6rem .9rem; margin-bottom: .5rem; border-radius: 8px; font-size: .88rem; font-weight: 600;
-    background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border);
-  }
-  .banner.banner-danger { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
-  .banner button {
-    background: none; border: none; color: inherit; font-size: 1rem; line-height: 1; cursor: pointer; padding: 0 .2rem;
-  }
 
   /* ---- 로그인 화면 ---- */
   .login-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    box-shadow: var(--shadow); padding: 1.5rem; margin-top: 2.5rem;
+    background: var(--zinc-surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 1.5rem; margin-top: 2.5rem;
   }
   .login-card h1 { font-size: 1.2rem; margin: 0 0 1rem; }
   .field { margin-bottom: .9rem; }
   .field label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .3rem; }
   .field input {
-    width: 100%; padding: .6rem .7rem; border: 1px solid var(--border); border-radius: 8px;
+    width: 100%; padding: .6rem .7rem; border: 1px solid var(--line); border-radius: 8px;
     font-size: 1rem; font-family: inherit;
   }
   .submit-btn {
-    width: 100%; background: var(--accent); color: var(--accent-ink); border: none; border-radius: 8px;
+    width: 100%; background: var(--ink); color: var(--zinc-surface); border: none; border-radius: 8px;
     padding: .7rem; font-size: 1rem; font-weight: 700; cursor: pointer;
   }
-  .error { color: var(--danger); font-size: .85rem; margin-bottom: .8rem; }
 
-  /* ---- 대여 목록 화면 (리스트형) ---- */
-  .section-title { font-size: .95rem; font-weight: 700; margin: 1.2rem 0 .6rem; color: var(--muted); }
-  .row-item {
-    display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    margin-bottom: .6rem; overflow: hidden;
-  }
-  .row-bar { width: 5px; flex: none; background: var(--ok); }
-  .row-item.is-overdue .row-bar { background: var(--danger); }
-  .row-body { flex: 1; min-width: 0; padding: .8rem .9rem; }
-  .row-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
-  .tool-name { font-weight: 700; font-size: 1.02rem; }
-  .stat-dot {
-    display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; font-weight: 700; white-space: nowrap;
-  }
-  .stat-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; }
-  .sd-ok::before     { background: var(--ok); }
-  .sd-danger::before { background: var(--danger); }
-  .sd-ok     { color: var(--ok); }
-  .sd-danger { color: var(--danger); }
-
-  /* 남은/초과 시간 — 학생이 가장 궁금해하는 정보이므로 크게 강조 */
-  .countdown { font-size: 1.3rem; font-weight: 800; margin-top: .35rem; font-variant-numeric: tabular-nums; }
-  .countdown.is-overdue { color: var(--danger); }
-  .countdown.is-ok { color: var(--ok); }
-
-  .meta { font-size: .82rem; color: var(--muted); margin-top: .4rem; }
-  .due-form { display: flex; gap: .4rem; margin-top: .6rem; }
-  .due-form button {
-    background: var(--accent); color: var(--accent-ink); border: none; border-radius: 6px; padding: .4rem .8rem;
-    font-size: .82rem; font-weight: 700; cursor: pointer;
-  }
   .empty { color: var(--muted); font-size: .88rem; padding: .5rem 0; }
 
-  /* ---- 대여하기: 공구·기한 탭 선택 ---- */
-  .tool-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
-  .due-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; margin-top: .5rem; }
-  .tool-tab {
-    position: relative; display: block; text-align: center; cursor: pointer;
-    border: 1px solid var(--border); border-radius: 8px; padding: .6rem .3rem;
-    background: var(--surface-2); font-weight: 700; font-size: .92rem;
-  }
-  .tool-tab input { position: absolute; opacity: 0; pointer-events: none; }
-  .tool-tab .avail { display: block; font-size: .72rem; color: var(--muted); font-weight: 400; margin-top: .15rem; }
-  .tool-tab:has(input:checked) { border-color: var(--accent); background: var(--surface); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-  .tool-tab:has(input:disabled) { opacity: .45; cursor: not-allowed; }
-  .due-tab { font-size: .85rem; padding: .5rem .2rem; }
-  .due-form > input[type="time"] {
-    margin-top: .5rem; padding: .5rem; border: 1px solid var(--border); border-radius: 8px;
-    font-size: 1rem; font-family: inherit; width: 100%;
-  }
-  .due-form > button[type="submit"] { margin-top: .6rem; padding: .6rem; font-size: .95rem; }
+  /* ---- 빈 이름표(대여 폼) 내부 레이아웃 ---- */
+  .chit-blank form > * + * { margin-top: .5rem; }
+  .chit-blank .pick-days { margin-top: .5rem; }
+  .chit-blank input[type=time] { width: 100%; }
+  .chit-blank button[type=submit] { width: 100%; }
+  /* .chit-actions button은 flex:1 인데 실제 flex 아이템은 감싼 form이므로 form도 flex 컨테이너로 만든다 */
+  .chit-actions form { flex: 1; display: flex; }
+
+  /* ---- 최근 반납 이력: 가벼운 리스트(주역이 아님) ---- */
+  .recent-returns { list-style: none; margin: 0; padding: 0; }
+  .recent-returns li { padding: .35rem 0; border-bottom: 1px solid var(--line-soft); font-size: var(--t-sm); color: var(--muted); }
+  .recent-returns li:last-child { border-bottom: none; }
+
+  /* 4.5rem 시계 숫자가 긴 문자열("1시간 20분")에서 320px 폭을 넘지 않도록 축소 */
+  .chit-clock { font-size: clamp(2.5rem, 12vw, 4.5rem); }
 </style>
 </head>
 <body>
@@ -116,7 +64,7 @@
 {% if page == "login" %}
 <div class="wrap">
   <div class="login-card">
-    <h1><span class="mark" style="color:var(--accent)">toolwatch</span> 학생 로그인</h1>
+    <h1>toolwatch 학생 로그인</h1>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     <form method="post" action="{{ url_for('student.student_login') }}" id="login-form">
       <div class="field">
@@ -158,14 +106,16 @@
 
 {% else %}
 <div class="topbar">
-  <span class="logo"><span class="mark">toolwatch</span></span>
-  <div class="right">
-    <span>{{ name }}님</span>
-    <button type="button" id="push-toggle" style="display:none">알림 켜기</button>
-    <form method="post" action="{{ url_for('student.student_login') }}" style="margin:0">
-      <input type="hidden" name="action" value="logout">
-      <button type="submit">로그아웃</button>
-    </form>
+  <div class="topbar-inner">
+    <span class="logo">toolwatch</span>
+    <div class="right">
+      <span class="user-name">{{ name }}님</span>
+      <button type="button" id="push-toggle" style="display:none">알림 켜기</button>
+      <form method="post" action="{{ url_for('student.student_login') }}" style="margin:0">
+        <input type="hidden" name="action" value="logout">
+        <button type="submit">로그아웃</button>
+      </form>
+    </div>
   </div>
 </div>
 <div class="wrap">
@@ -175,86 +125,74 @@
   {% endif %}{% endwith %}
 
   <div id="live">
-    <div class="section-title">대여하기</div>
+    <div class="section-title">공구 걸기</div>
     {% if is_pending %}
-      <div class="banner" role="status">관리자의 카드 등록 대기 중 — 카드 등록 후 대여 가능</div>
+      <div class="banner" role="status">카드 등록 전이라 대여할 수 없습니다. 관리자에게 학생증을 등록하세요.</div>
     {% endif %}
     {% if reservation %}
-      <div class="row-item">
-        <div class="row-bar"></div>
-        <div class="row-body">
-          <div class="row-top">
-            <span class="tool-name">{{ reservation.tool_label }} 예약됨</span>
-          </div>
-          <div class="meta">{{ reservation.remaining_sec }}초 안에 카드를 태그하세요</div>
-          <form class="due-form" method="post" action="{{ url_for('student.student_reserve_cancel') }}">
-            <button type="submit">예약 취소</button>
-          </form>
-        </div>
+      <div class="chit-blank">
+        <p class="chit-meta"><strong>{{ reservation.tool_label }}</strong> 예약됨 · {{ reservation.remaining_sec }}초 안에 카드를 태그하세요</p>
+        <form method="post" action="{{ url_for('student.student_reserve_cancel') }}">
+          <button type="submit" class="ghost">예약 취소</button>
+        </form>
       </div>
     {% else %}
-      <div class="row-item">
-        <div class="row-bar"></div>
-        <div class="row-body">
-          <form class="due-form" method="post" action="{{ url_for('student.student_reserve') }}" style="flex-direction:column; align-items:stretch">
-            <div class="tool-tabs">
-              {% for t in tools %}
-              <label class="tool-tab">
-                <input type="radio" name="tool" value="{{ t.key }}" {{ 'disabled' if t.available <= 0 else '' }} required>
-                {{ t.label }}
-                <span class="avail">{{ '남은 수량 ' ~ t.available if t.available > 0 else '모두 대여 중' }}</span>
-              </label>
-              {% endfor %}
-            </div>
-            <div class="due-tabs">
-              {% for d, lbl in [(0, "오늘"), (1, "내일"), (2, "모레"), (3, "3일 후")] %}
-              <label class="tool-tab due-tab">
-                <input type="radio" name="due_day" value="{{ d }}" required>
-                {{ lbl }}
-              </label>
-              {% endfor %}
-            </div>
-            <input type="time" name="due_time" value="18:00" required>
-            <button type="submit">대여하기</button>
-          </form>
-        </div>
+      <div class="chit-blank">
+        <form method="post" action="{{ url_for('student.student_reserve') }}">
+          <div class="pick pick-tools">
+            {% for t in tools %}
+            <label class="pick-opt">
+              <input type="radio" name="tool" value="{{ t.key }}" {{ 'disabled' if t.available <= 0 else '' }} required>
+              {{ t.label }}
+              <span class="avail">{{ '남은 수량 ' ~ t.available if t.available > 0 else '모두 대여 중' }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          <div class="pick pick-days">
+            {% for d, lbl in [(0, "오늘"), (1, "내일"), (2, "모레"), (3, "3일 후")] %}
+            <label class="pick-opt">
+              <input type="radio" name="due_day" value="{{ d }}" required>
+              {{ lbl }}
+            </label>
+            {% endfor %}
+          </div>
+          <input type="time" name="due_time" value="18:00" required>
+          <button type="submit">대여 확정</button>
+        </form>
       </div>
     {% endif %}
 
-    <div class="section-title">대여 중</div>
+    <div class="section-title">내가 걸어둔 이름표</div>
     {% if open_loans %}
       {% for loan in open_loans %}
-      <div class="row-item {{ 'is-overdue' if loan.overdue else '' }}"
+      <article class="loan-chit {{ 'is-late' if loan.overdue else '' }}"
            data-loan-id="{{ loan.id }}" data-tool="{{ tool_labels.get(loan.tool, loan.tool) }}"
            data-out-at="{{ loan.out_at }}" data-overdue="{{ 'true' if loan.overdue else 'false' }}">
-        <div class="row-bar"></div>
-        <div class="row-body">
-          <div class="row-top">
-            <span class="tool-name">{{ tool_labels.get(loan.tool, loan.tool) }}</span>
-            <span class="stat-dot {{ 'sd-danger' if loan.overdue else 'sd-ok' }}">{{ '연체' if loan.overdue else '정상' }}</span>
-          </div>
-          {% if loan.due_at %}
-            <div class="countdown" data-due="{{ loan.due_at_input }}">계산 중…</div>
-          {% endif %}
-          <div class="meta">대여 시각: {{ loan.out_at }}</div>
-          <div class="meta">기한: {{ loan.due_at or '미설정' }}</div>
-          {% if my_return_loan_id == loan.id and my_return %}
-            {% if my_return.tagged %}
-              <div class="meta">공구 인식 대기 중…</div>
-            {% else %}
-              <div class="meta">카드를 태그하고 공구를 거치대에 걸어주세요 ({{ my_return.remaining_sec }}초)</div>
-            {% endif %}
-            <form class="due-form" method="post" action="{{ url_for('student.student_return_cancel') }}">
-              <button type="submit">취소</button>
-            </form>
+        <h3 class="chit-tool">{{ tool_labels.get(loan.tool, loan.tool) }}</h3>
+        {% if loan.due_at %}
+          <p class="chit-clock" data-due="{{ loan.due_at_input }}">—<span class="unit">&nbsp;</span></p>
+        {% endif %}
+        <p class="chit-meta">기한 {{ loan.due_at or '미설정' }} · 대여 {{ loan.out_at }}</p>
+        {% if my_return_loan_id == loan.id and my_return %}
+          {% if my_return.tagged %}
+            <p class="chit-meta">공구 인식 대기 중…</p>
           {% else %}
-            <form class="due-form" method="post" action="{{ url_for('student.student_return') }}">
+            <p class="chit-meta">카드를 태그하고 공구를 거치대에 걸어주세요 ({{ my_return.remaining_sec }}초)</p>
+          {% endif %}
+          <div class="chit-actions">
+            <form method="post" action="{{ url_for('student.student_return_cancel') }}">
+              <button type="submit" class="ghost">취소</button>
+            </form>
+          </div>
+        {% else %}
+          <div class="chit-actions">
+            <form method="post" action="{{ url_for('student.student_return') }}">
               <input type="hidden" name="loan_id" value="{{ loan.id }}">
               <button type="submit">반납하기</button>
             </form>
-          {% endif %}
-        </div>
-      </div>
+          </div>
+        {% endif %}
+      </article>
       {% endfor %}
     {% else %}
       <div class="empty">현재 대여 중인 공구가 없습니다.</div>
@@ -262,18 +200,13 @@
 
     <div class="section-title">최근 반납 이력</div>
     {% if returned_loans %}
-      {% for loan in returned_loans %}
-      <div class="row-item" data-tool="{{ tool_labels.get(loan.tool, loan.tool) }}" data-out-at="{{ loan.out_at }}" data-returned="true">
-        <div class="row-bar"></div>
-        <div class="row-body">
-          <div class="row-top">
-            <span class="tool-name">{{ tool_labels.get(loan.tool, loan.tool) }}</span>
-            <span class="stat-dot sd-ok">반납완료</span>
-          </div>
-          <div class="meta">대여: {{ loan.out_at }} · 반납: {{ loan.returned_at }}</div>
-        </div>
-      </div>
-      {% endfor %}
+      <ul class="recent-returns">
+        {% for loan in returned_loans %}
+        <li data-tool="{{ tool_labels.get(loan.tool, loan.tool) }}" data-out-at="{{ loan.out_at }}" data-returned="true">
+          {{ tool_labels.get(loan.tool, loan.tool) }} · 대여 {{ loan.out_at }} · 반납 {{ loan.returned_at }}
+        </li>
+        {% endfor %}
+      </ul>
     {% else %}
       <div class="empty">반납 이력이 없습니다.</div>
     {% endif %}
@@ -288,16 +221,22 @@
     var totalMin = Math.floor(abs / 60000);
     var h = Math.floor(totalMin / 60), m = totalMin % 60;
     var body = (h > 0 ? h + '시간 ' : '') + m + '분';
-    return ms >= 0 ? body + ' 남음' : body + ' 초과';
+    return { body: body, unit: ms >= 0 ? '남음' : '초과' };
   }
   function updateCountdowns() {
-    document.querySelectorAll('.countdown[data-due]').forEach(function (el) {
+    document.querySelectorAll('.chit-clock[data-due]').forEach(function (el) {
       var due = new Date(el.getAttribute('data-due'));
       if (isNaN(due.getTime())) return;
       var diff = due.getTime() - Date.now();
-      el.textContent = fmtRemain(diff);
-      el.classList.toggle('is-overdue', diff < 0);
-      el.classList.toggle('is-ok', diff >= 0);
+      var r = fmtRemain(diff);
+      el.textContent = '';
+      el.appendChild(document.createTextNode(r.body));
+      var unit = document.createElement('span');
+      unit.className = 'unit';
+      unit.textContent = r.unit;
+      el.appendChild(unit);
+      var chit = el.closest('.loan-chit');
+      if (chit) chit.classList.toggle('is-late', diff < 0);
     });
   }
   updateCountdowns();
@@ -339,7 +278,7 @@
   // ---- 5초 폴링: #live 영역만 교체, 편집 중(입력 포커스)이면 이번 회차는 건너뜀 ----
   function snapshotOpen(root) {
     var map = {};
-    root.querySelectorAll('.row-item[data-loan-id]').forEach(function (row) {
+    root.querySelectorAll('.loan-chit[data-loan-id]').forEach(function (row) {
       map[row.getAttribute('data-loan-id')] = {
         tool: row.getAttribute('data-tool'),
         outAt: row.getAttribute('data-out-at'),
@@ -350,7 +289,7 @@
   }
   function snapshotReturnedKeys(root) {
     var set = {};
-    root.querySelectorAll('.row-item[data-returned]').forEach(function (row) {
+    root.querySelectorAll('[data-returned]').forEach(function (row) {
       set[row.getAttribute('data-tool') + '|' + row.getAttribute('data-out-at')] = true;
     });
     return set;
