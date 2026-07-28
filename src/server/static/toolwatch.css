@@ -1,4 +1,19 @@
 /* dashboard.html / student.html 공통 규칙 (문자 그대로 동일한 것만 추출) */
+
+/* Pretendard 로컬 호스팅 — jsdelivr CDN 의존 제거.
+   시연 중 학교망이 CDN을 막으면 글꼴이 통째로 폴백되고, Pi 단독 운용 시
+   외부 네트워크 없이도 같은 화면이 나와야 한다. subset(KS X 1001) 사용. */
+@font-face { font-family: "Pretendard"; font-style: normal; font-display: swap;
+  font-weight: 400; src: url("fonts/pretendard-400.woff2") format("woff2"); }
+@font-face { font-family: "Pretendard"; font-style: normal; font-display: swap;
+  font-weight: 600; src: url("fonts/pretendard-600.woff2") format("woff2"); }
+@font-face { font-family: "Pretendard"; font-style: normal; font-display: swap;
+  font-weight: 700; src: url("fonts/pretendard-700.woff2") format("woff2"); }
+@font-face { font-family: "Pretendard"; font-style: normal; font-display: swap;
+  font-weight: 800; src: url("fonts/pretendard-800.woff2") format("woff2"); }
+@font-face { font-family: "Pretendard"; font-style: normal; font-display: swap;
+  font-weight: 900; src: url("fonts/pretendard-900.woff2") format("woff2"); }
+
 :root {
   --bg: #ececea;
   --surface: #ffffff;
