@@ -309,8 +309,8 @@
               <thead>
                 <tr>
                   <th scope="col">공구</th>
-                  <th scope="col" class="num">등록 재고</th>
-                  <th scope="col" class="num">현재 검출</th>
+                  <th scope="col" class="num">전체 보유</th>
+                  <th scope="col" class="num">거치대에 있음</th>
                   <th scope="col" class="num">대여 중</th>
                 </tr>
               </thead>
@@ -353,7 +353,7 @@
                     {% set elapsed_min = (item.elapsed_sec // 60) %}
                     <td class="num">{% if elapsed_min < 60 %}{{ elapsed_min }}분{% else %}{{ elapsed_min // 60 }}시간 {{ elapsed_min % 60 }}분{% endif %}</td>
                     <td>
-                      {% if item.unauth %}<span class="stat-dot sd-danger">미확인</span>
+                      {% if item.unauth %}<span class="stat-dot sd-danger">무단 반출</span>
                       {% elif item.overdue %}<span class="stat-dot sd-warn">미반납</span>
                       {% else %}<span class="stat-dot sd-ok">정상</span>{% endif %}
                     </td>
@@ -378,8 +378,8 @@
       <div class="filter-bar" id="event-filter">
         <label><input type="checkbox" value="OUT" checked> 대여</label>
         <label><input type="checkbox" value="IN" checked> 반납</label>
-        <label><input type="checkbox" value="OVERDUE" checked> 기한초과</label>
-        <label><input type="checkbox" value="UNAUTH" checked> 미확인</label>
+        <label><input type="checkbox" value="OVERDUE" checked> 기한 초과</label>
+        <label><input type="checkbox" value="UNAUTH" checked> 무단 반출</label>
       </div>
       <div class="table-wrap">
         <table id="event-table">
@@ -399,8 +399,8 @@
             <tr data-event="{{ ev }}">
               <td class="mono">{{ row['시각'] }}</td>
               <td>
-                {% if ev == 'UNAUTH' %}<span class="stat-dot sd-danger">미확인</span>
-                {% elif ev == 'OVERDUE' %}<span class="stat-dot sd-warn">기한초과</span>
+                {% if ev == 'UNAUTH' %}<span class="stat-dot sd-danger">무단 반출</span>
+                {% elif ev == 'OVERDUE' %}<span class="stat-dot sd-warn">기한 초과</span>
                 {% elif ev == 'IN' %}<span class="stat-dot sd-ok">반납</span>
                 {% else %}<span class="stat-dot sd-neutral">{{ '대여' if ev == 'OUT' else ev }}</span>{% endif %}
               </td>
