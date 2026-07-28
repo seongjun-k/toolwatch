@@ -72,5 +72,9 @@
   `vcgencmd measure_temp`·`vcgencmd get_throttled`로 시연 전 확인. 스로틀링 시 추론 시간 재실측
 - 메모리(4GB): torch·ultralytics 상주 + waitress 스레드가 겹치면 여유가 얇다.
   OOM 발생 시 waitress threads 축소 → NCNN 전환 → 그래도 안 되면 Pi 5 재검토
+- `capture_size`↔`roi` 좌표계 결합: Pi config `capture_size`를 바꾸면 프레임 픽셀 좌표가 바뀌므로
+  서버 config의 `roi`를 반드시 재측정해야 한다. roi가 프레임 범위를 벗어나도 예외 없이 검은 여백으로
+  크롭되어 검출 0개가 되고, 등록 공구 전체가 대여 중으로 확정된다(유령 반출). 실패가 조용해서
+  로그만 봐서는 원인을 못 찾는다. 성능 조정으로 해상도를 건드릴 때 특히 주의
 - SD 수명: DB 쓰기 빈도 낮아 실질 무해하나 백업 습관 유지
 - 시연 중 정전/재부팅: systemd 자동 복구 + restore_rented_state로 대여 상태 복원됨 (검증된 경로)
