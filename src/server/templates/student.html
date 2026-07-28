@@ -7,7 +7,6 @@
 <title>toolwatch 내 대여 현황</title>
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 <meta name="theme-color" content="#23241f">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='toolwatch.css') }}">
 <style>
   :root {
@@ -175,9 +174,9 @@
   {% endif %}{% endwith %}
 
   <div id="live">
-    <div class="section-title">대여하기</div>
+    <div class="section-title">공구 걸기</div>
     {% if is_pending %}
-      <div class="banner" role="status">관리자의 카드 등록 대기 중 — 카드 등록 후 대여 가능</div>
+      <div class="banner" role="status">카드 등록 전이라 대여할 수 없습니다. 관리자에게 학생증을 등록하세요.</div>
     {% endif %}
     {% if reservation %}
       <div class="row-item">
@@ -215,7 +214,7 @@
               {% endfor %}
             </div>
             <input type="time" name="due_time" value="18:00" required>
-            <button type="submit">대여하기</button>
+            <button type="submit">대여 확정</button>
           </form>
         </div>
       </div>
@@ -234,7 +233,7 @@
             <span class="stat-dot {{ 'sd-danger' if loan.overdue else 'sd-ok' }}">{{ '연체' if loan.overdue else '정상' }}</span>
           </div>
           {% if loan.due_at %}
-            <div class="countdown" data-due="{{ loan.due_at_input }}">계산 중…</div>
+            <div class="countdown" data-due="{{ loan.due_at_input }}">—</div>
           {% endif %}
           <div class="meta">대여 시각: {{ loan.out_at }}</div>
           <div class="meta">기한: {{ loan.due_at or '미설정' }}</div>
