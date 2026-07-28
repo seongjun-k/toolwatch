@@ -39,3 +39,6 @@ backups/
 
 # 수집 모드 프레임 데이터 — 로컬 전용
 _workspace/
+
+# 옵시디언 Vault 설정·캐시 — 로컬 전용
+.obsidian/
