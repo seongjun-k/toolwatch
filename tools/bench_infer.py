@@ -13,9 +13,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src" / "server"))  # core.py가 db/state를 플랫 임포트함
 
-from src.server import core  # noqa: E402
+import core  # noqa: E402
 
 
 def find_sample():
