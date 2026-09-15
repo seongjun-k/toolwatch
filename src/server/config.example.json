@@ -7,15 +7,11 @@
   "roi": null,
   "registered_stock": {
     "nipper": 1,
-    "driver": 1,
-    "plier": 1,
-    "hex_key": 1
+    "driver": 1
   },
   "tool_labels": {
     "nipper": "니퍼",
-    "driver": "드라이버",
-    "plier": "펜치",
-    "hex_key": "육각렌치"
+    "driver": "드라이버"
   },
   "rfid_session_sec": 30,
   "overdue_sec": 7200,
