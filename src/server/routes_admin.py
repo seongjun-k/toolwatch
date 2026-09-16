@@ -43,6 +43,10 @@ def dashboard():
         # 프레임 자체는 /live.jpg로 따로 받는다 — 1초마다 페이지를 갱신하는데 여기에 base64로 실으면
         # 매 갱신마다 인코딩 비용과 수십~수백 KB 전송이 붙는다. 여기서는 표시 여부만 넘긴다.
         has_frame = bool(state["latest_frame_annot"] or state["latest_frame"])
+        # 카드 등록 입력칸을 채우는 용도. Pi가 프레임마다 실어 보낸 UID를 서버가 이미 들고 있으므로
+        # 관리자가 숫자를 옮겨 적을 필요가 없다 (손으로 적다가 4/5바이트 값이 어긋나는 사고가 있었다).
+        rfid_session = state["rfid_session"]
+        last_uid = rfid_session["uid"] if rfid_session and rfid_session["expires_at"] > now else ""
         conn = db.get_conn(DB_PATH)
         try:
             events = db.get_recent_events(conn)
@@ -56,6 +60,7 @@ def dashboard():
             rented=rented_view,
             events=events,
             has_frame=has_frame,
+            last_uid=last_uid,
             last_updated=state["last_updated"],
             config=CONFIG,
             users_full=users_full,
@@ -183,6 +188,17 @@ def live_frame():
         return "", 204
     # no-store가 없으면 브라우저가 캐시해 화면이 멈춘 것처럼 보인다
     return Response(frame, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@bp.route("/last_uid")
+@login_required
+def last_uid_json():
+    """가장 최근에 태그된 카드 UID. 사용자 등록 영역은 주기 갱신 대상이 아니라서
+    (설정·사용자 관리는 #live 바깥) 이 값만 따로 받아 입력칸을 채운다."""
+    with state_lock:
+        sess = state["rfid_session"]
+        uid = sess["uid"] if sess and sess["expires_at"] > time.time() else ""
+    return jsonify({"uid": uid})
 
 
 @bp.route("/live.mjpg")

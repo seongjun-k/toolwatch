@@ -485,7 +485,7 @@
                   <form method="post" action="{{ url_for('admin.control') }}" style="display:inline">
                     <input type="hidden" name="action" value="uid_assign">
                     <input type="hidden" name="old_uid" value="{{ u.uid }}">
-                    <input type="text" name="new_uid" placeholder="카드 UID">
+                    <input type="text" name="new_uid" class="card-uid" placeholder="카드를 태그하세요" value="{{ last_uid }}">
                     <button type="submit">카드 등록</button>
                   </form>
                   {% endif %}
@@ -515,7 +515,7 @@
         <form method="post" action="{{ url_for('admin.control') }}">
           <input type="hidden" name="action" value="uid_add">
           <div class="field-row">
-            <label class="field"><span>UID</span><input type="text" name="uid" placeholder="예: 04A2B1C3"></label>
+            <label class="field"><span>UID</span><input type="text" name="uid" class="card-uid" placeholder="카드를 태그하세요" value="{{ last_uid }}"></label>
             <label class="field"><span>학번</span><input type="text" name="student_id" placeholder="예: 12345"></label>
             <label class="field"><span>이름</span><input type="text" name="name" placeholder="예: 홍길동"></label>
             <button type="submit">등록</button>
@@ -578,6 +578,23 @@
     // 표 갱신은 2초면 충분하다. 1초로 당기면 페이지 전체를 받아 파싱하느라 화면이 끊긴다.
     setInterval(refresh, 2000);
 
+  })();
+
+  // 카드 UID 자동 채움: 리더기에 카드를 대면 .card-uid 입력칸이 알아서 채워진다.
+  // 사용자 관리 영역은 주기 갱신 대상이 아니므로 이 값만 따로 받아 넣는다.
+  // 이미 손으로 입력했거나 편집 중인 칸은 건드리지 않는다.
+  (function () {
+    setInterval(function () {
+      fetch("/last_uid", { credentials: "same-origin" })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (data) {
+          if (!data || !data.uid) return;
+          document.querySelectorAll("input.card-uid").forEach(function (el) {
+            if (el !== document.activeElement && !el.value) el.value = data.uid;
+          });
+        })
+        .catch(function () { /* 네트워크 오류 시 아무 것도 안 함 */ });
+    }, 1000);
   })();
 </script>
 {% endif %}
