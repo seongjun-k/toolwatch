@@ -34,6 +34,7 @@ VAPID_KEY_PATH = str(ROOT_DIR / CONFIG["vapid_private_key_file"]) if CONFIG.get(
 # rented: {공구명: [{"uid","name","out_time","cleared","overdue_logged"}, ...]} (같은 공구 여러 개는 큐로, IN 시 오래된 것부터 해제)
 state = {
     "latest_frame": None,
+    "latest_frame_annot": None,  # YOLO 박스 주석 입힌 대시보드 표시용 (원본 latest_frame은 증거 보존용, 건드리지 않음)
     "tool_status": {},
     "last_updated": None,
     "rented": {},

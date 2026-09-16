@@ -151,7 +151,11 @@ def get_model():
 
 
 def detect_tools(frame_bytes):
-    """프레임 바이트 → ROI 크롭 → YOLO 추론 → 공구명별 검출 개수 dict."""
+    """프레임 바이트 → ROI 크롭 → YOLO 추론 → (공구명별 검출 개수 dict, 박스 주석 입힌 JPEG 바이트).
+
+    주석 이미지는 ROI가 설정된 경우 크롭된 화면 기준으로 그려진다(대시보드 진단용이라 원본
+    좌표계로 되돌리지 않음).
+    """
     image = Image.open(io.BytesIO(frame_bytes)).convert("RGB")
     roi = CONFIG.get("roi")
     if roi:
@@ -159,7 +163,15 @@ def detect_tools(frame_bytes):
 
     results = get_model()(image, conf=CONFIG["confidence_threshold"], verbose=False)
     r = results[0]
-    return dict(Counter(r.names[int(c)] for c in r.boxes.cls.tolist()))
+    counts = dict(Counter(r.names[int(c)] for c in r.boxes.cls.tolist()))
+
+    import cv2  # ultralytics 의존성으로 이미 설치됨, 여기서만 필요해 지연 임포트
+
+    annotated_bgr = r.plot()  # 박스+클래스명+conf가 그려진 BGR ndarray
+    ok, buf = cv2.imencode(".jpg", annotated_bgr, [cv2.IMWRITE_JPEG_QUALITY, 70])  # 진단용 화면이라 용량을 줄인다 (기본 95면 프레임당 1MB 이상)
+    annotated_bytes = buf.tobytes() if ok else frame_bytes  # 인코딩 실패 시 원본으로 폴백
+
+    return counts, annotated_bytes
 
 
 def save_snapshot(tool, frame_bytes):

@@ -47,7 +47,7 @@ def receive_frame():
 
     # YOLO 추론은 state를 읽지 않는 순수 계산 — 락 안에서 돌리면 추론 시간(CPU 수백 ms~초)만큼
     # 대시보드·학생 페이지가 전부 블로킹되므로 반드시 락 진입 전에 수행한다 (flush_pushes와 같은 원칙)
-    detected_counts = core.detect_tools(frame_bytes)
+    detected_counts, annotated_frame = core.detect_tools(frame_bytes)
 
     with state.state_lock:
         now = time.time()
@@ -147,6 +147,7 @@ def receive_frame():
             conn.close()
 
         state.state["latest_frame"] = frame_bytes
+        state.state["latest_frame_annot"] = annotated_frame  # 대시보드 표시 전용, 반출 증거 스냅샷은 원본(latest_frame)만 사용
         state.state["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         core.save_collect_frame(frame_bytes)  # 데이터 수집 모드 — 판정 흐름 밖, 저장만
         state.state["tool_status"] = {

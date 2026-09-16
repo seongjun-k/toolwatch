@@ -41,7 +41,9 @@ def dashboard():
             ]
             for tool, items in state["rented"].items()
         }
-        latest_frame_b64 = base64.b64encode(state["latest_frame"]).decode() if state["latest_frame"] else None
+        # 대시보드엔 검출 박스가 그려진 주석본을 우선 표시, 서버 기동 직후 등 아직 없으면 원본으로 폴백
+        frame_for_display = state["latest_frame_annot"] or state["latest_frame"]
+        latest_frame_b64 = base64.b64encode(frame_for_display).decode() if frame_for_display else None
         conn = db.get_conn(DB_PATH)
         try:
             events = db.get_recent_events(conn)
