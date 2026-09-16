@@ -18,6 +18,7 @@ import hw
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
 REQUEST_TIMEOUT_SEC = 5  # 캡처 주기와 별개로 고정 — 계획에 없는 재시도/백오프 설계는 하지 않는다
+RFID_POLL_SEC = 0.1  # 카드를 대는 동작은 0.5초 이상 머무르므로 이 간격이면 놓치지 않는다
 
 _uid_lock = threading.Lock()
 _latest_uid = ""
@@ -30,12 +31,17 @@ def _rfid_loop() -> None:
     reader = SimpleMFRC522()
     while True:
         try:
-            uid, _ = reader.read()  # 태그가 태깅될 때까지 블로킹 — 전용 스레드라 메인 루프에 영향 없음
-            with _uid_lock:
-                _latest_uid = str(uid)
+            # read()는 카드가 올 때까지 파이썬 루프로 쉬지 않고 SPI를 두드려 코어 하나를 통째로 먹는다(실측 100%).
+            # UID만 있으면 되므로 블록 읽기·인증이 없는 read_id_no_block을 짧은 간격으로 부른다.
+            # 반환값은 read()와 같은 uid_to_num(5바이트) 결과라 서버 등록값과 그대로 맞는다.
+            uid = reader.read_id_no_block()
+            if uid is not None:
+                with _uid_lock:
+                    _latest_uid = str(uid)
         except Exception:
             # SPI/배선 일시 오류로 스레드가 죽으면 이후 모든 반출이 미확인으로 오경고되므로 재시도
             time.sleep(1)
+        time.sleep(RFID_POLL_SEC)
 
 
 def _peek_uid() -> str:
