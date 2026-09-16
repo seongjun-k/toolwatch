@@ -582,7 +582,8 @@
 
   // 카드 UID 자동 채움: 리더기에 카드를 대면 .card-uid 입력칸이 알아서 채워진다.
   // 사용자 관리 영역은 주기 갱신 대상이 아니므로 이 값만 따로 받아 넣는다.
-  // 이미 손으로 입력했거나 편집 중인 칸은 건드리지 않는다.
+  // 직전에 자동으로 넣은 값이면 다른 카드를 대는 순간 갱신한다(잘못 댄 카드를 지울 필요 없게).
+  // 사람이 직접 입력한 값과 편집 중인 칸은 건드리지 않는다.
   (function () {
     setInterval(function () {
       fetch("/last_uid", { credentials: "same-origin" })
@@ -590,7 +591,10 @@
         .then(function (data) {
           if (!data || !data.uid) return;
           document.querySelectorAll("input.card-uid").forEach(function (el) {
-            if (el !== document.activeElement && !el.value) el.value = data.uid;
+            if (el === document.activeElement) return;
+            if (el.value && el.value !== el.dataset.autofill) return;  // 손으로 친 값은 보존
+            el.value = data.uid;
+            el.dataset.autofill = data.uid;
           });
         })
         .catch(function () { /* 네트워크 오류 시 아무 것도 안 함 */ });
