@@ -70,8 +70,9 @@ def run() -> None:
     threading.Thread(target=_rfid_loop, daemon=True).start()
 
     camera = Picamera2()
-    # 해상도는 학습 데이터 촬영(stream_frames.py)과 반드시 같아야 한다 — 화각·비율이 다르면 검출률이 무너진다
-    camera.configure(camera.create_still_configuration(main={"size": tuple(config.get("capture_size", [1280, 720]))}))
+    # 해상도·설정 모두 학습 데이터 촬영(stream_frames.py)과 같아야 한다 — 화각·비율이 다르면 검출률이 무너진다.
+    # still 설정은 한 장 찍는 데 수백 ms가 걸려 화면이 끊긴다. video 설정이 훨씬 빠르고 학습 때와 같은 화각이다.
+    camera.configure(camera.create_video_configuration(main={"size": tuple(config.get("capture_size", [1280, 720]))}))
     camera.options["quality"] = config.get("jpeg_quality", 80)
     camera.start()
 
@@ -96,9 +97,10 @@ def run() -> None:
                 resp.raise_for_status()
                 result = resp.json()
                 _consume_uid(uid)
-                hw.apply(result["light"], result["buzzer"])
-                # 서버가 지시한 캡처 주기 반영(적응형 촬영) — 구서버 등 응답에 없으면 기존 주기 유지(하위 호환)
+                # 서버가 지시한 캡처 주기 반영(적응형 촬영) — 구서버 등 응답에 없으면 기존 주기 유지(하위 호환).
+                # hw.apply보다 먼저 반영한다: GPIO 오류로 예외가 나면 아래 except가 삼켜 주기가 영영 낡은 값으로 남는다
                 interval = result.get("interval", interval)
+                hw.apply(result["light"], result["buzzer"])
             except Exception:
                 # 카메라/GPIO 등 일시 오류 하나로 감시 루프 전체가 죽으면 안 됨(계획서 3.6).
                 # 직전 경고 상태 유지, 다음 주기에 재시도. KeyboardInterrupt는 Exception이 아니므로 종료는 여전히 가능

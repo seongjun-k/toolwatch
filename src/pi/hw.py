@@ -1,9 +1,9 @@
-"""릴레이 모듈 4채널(적/황/녹/부저) 제어 래퍼 (gpiozero OutputDevice).
+"""릴레이 모듈 4채널(적/황/녹/부저) 제어 래퍼 (gpiozero DigitalOutputDevice).
 
 3색 경광등은 12V 공통음극 소자라 GPIO에 직결할 수 없어 릴레이 모듈을 경유한다 (계획서 2.2).
 판정 로직은 전부 서버가 수행하고, 여기서는 서버가 내려준 light/buzzer 값을 그대로 구동만 한다.
 """
-from gpiozero import OutputDevice
+from gpiozero import DigitalOutputDevice
 
 # 릴레이 모듈이 액티브 로우(신호 LOW일 때 통전)인지 액티브 하이인지는 모듈 수령 후 실측으로 확정.
 # 여기 하나만 뒤집으면 아래 on()/off() 호출부는 극성을 신경 쓸 필요가 없다.
@@ -18,7 +18,8 @@ def init(pins: dict) -> None:
     global _devices, _last_state
     active_high = not RELAY_ACTIVE_LOW
     _devices = {
-        name: OutputDevice(pin, active_high=active_high, initial_value=False)
+        # blink()가 필요해 DigitalOutputDevice를 쓴다 — OutputDevice에는 blink가 없어 단속음에서 AttributeError가 났다
+        name: DigitalOutputDevice(pin, active_high=active_high, initial_value=False)
         for name, pin in pins.items()
     }
     _last_state = (None, None)
