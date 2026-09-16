@@ -1,11 +1,10 @@
 """toolwatch 관리자 라우트 (S1~S5, E1). 대시보드 조회·로그인·제어·스냅샷 열람."""
-import base64
 import sqlite3
 import time
 from datetime import datetime
 from functools import wraps
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 
 import db
 import push
@@ -41,9 +40,9 @@ def dashboard():
             ]
             for tool, items in state["rented"].items()
         }
-        # 대시보드엔 검출 박스가 그려진 주석본을 우선 표시, 서버 기동 직후 등 아직 없으면 원본으로 폴백
-        frame_for_display = state["latest_frame_annot"] or state["latest_frame"]
-        latest_frame_b64 = base64.b64encode(frame_for_display).decode() if frame_for_display else None
+        # 프레임 자체는 /live.jpg로 따로 받는다 — 1초마다 페이지를 갱신하는데 여기에 base64로 실으면
+        # 매 갱신마다 인코딩 비용과 수십~수백 KB 전송이 붙는다. 여기서는 표시 여부만 넘긴다.
+        has_frame = bool(state["latest_frame_annot"] or state["latest_frame"])
         conn = db.get_conn(DB_PATH)
         try:
             events = db.get_recent_events(conn)
@@ -56,7 +55,7 @@ def dashboard():
             tool_status=state["tool_status"],
             rented=rented_view,
             events=events,
-            latest_frame_b64=latest_frame_b64,
+            has_frame=has_frame,
             last_updated=state["last_updated"],
             config=CONFIG,
             users_full=users_full,
@@ -172,3 +171,49 @@ def control():
 @login_required  # 반출 증거 사진이라 파일명이 추측 가능해도 로그인 없이는 열람 불가해야 한다
 def snapshot_file(filename):
     return send_from_directory(SNAPSHOT_DIR, filename)
+
+
+@bp.route("/live.jpg")
+@login_required
+def live_frame():
+    """최신 프레임 1장을 JPEG 그대로 반환. 스냅샷 용도(디버깅·외부 도구)로 남겨둔다."""
+    with state_lock:
+        frame = state["latest_frame_annot"] or state["latest_frame"]
+    if not frame:
+        return "", 204
+    # no-store가 없으면 브라우저가 캐시해 화면이 멈춘 것처럼 보인다
+    return Response(frame, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@bp.route("/live.mjpg")
+@login_required
+def live_mjpeg():
+    """MJPEG 스트림. <img>에 그대로 물리면 브라우저가 프레임을 이어서 그려 깜빡임이 없다.
+    JS로 한 장씩 갈아끼우면 교체 순간마다 빈 칸이 보이는데, 그 문제가 원천적으로 사라진다.
+
+    # ponytail: 열린 스트림 하나가 waitress 스레드 하나를 계속 점유한다. 관리자 대시보드라
+    # 동시 접속이 많지 않아 server_threads 여유분으로 감당한다. 부족해지면 프레임 큐 + 단일
+    # 브로드캐스트 스레드로 바꿔야 한다.
+    """
+    boundary = "toolwatchframe"
+    crlf = chr(13) + chr(10)  # multipart 규격상 개행은 CRLF 고정
+
+    def generate():
+        last = None
+        while True:
+            with state_lock:
+                frame = state["latest_frame_annot"] or state["latest_frame"]
+            if frame is not None and frame is not last:
+                last = frame
+                part = ("--" + boundary + crlf
+                        + "Content-Type: image/jpeg" + crlf
+                        + "Content-Length: " + str(len(frame)) + crlf + crlf)
+                yield part.encode() + frame + crlf.encode()
+            else:
+                time.sleep(0.02)  # 새 프레임이 없을 때만 쉰다 — 있으면 즉시 내보낸다
+
+    return Response(
+        generate(),
+        mimetype="multipart/x-mixed-replace; boundary=" + boundary,
+        headers={"Cache-Control": "no-store"},
+    )
