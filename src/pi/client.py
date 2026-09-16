@@ -70,7 +70,8 @@ def run() -> None:
     threading.Thread(target=_rfid_loop, daemon=True).start()
 
     camera = Picamera2()
-    camera.configure(camera.create_still_configuration())
+    # 해상도는 학습 데이터 촬영(stream_frames.py)과 반드시 같아야 한다 — 화각·비율이 다르면 검출률이 무너진다
+    camera.configure(camera.create_still_configuration(main={"size": tuple(config.get("capture_size", [1280, 720]))}))
     camera.options["quality"] = config.get("jpeg_quality", 80)
     camera.start()
 
