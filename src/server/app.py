@@ -136,6 +136,12 @@ def receive_frame():
                     if return_uid is not None:
                         state.state["returns"].pop(return_uid, None)
 
+                    # 반납이 끝났으면 그 카드의 세션도 소진한다: 남겨 두면 반납 직후 카드 없이 뺀 공구가
+                    # 반납자에게 귀속돼 무단 반출이 정상 대여로 기록된다
+                    sess = state.state["rfid_session"]
+                    if sess and sess["uid"] in (item.get("uid"), return_uid):
+                        state.state["rfid_session"] = None
+
             state.state["rented"], overdue_events = core.check_overdue(state.state["rented"], CONFIG["overdue_sec"], now)
             for ev in overdue_events:
                 if ev["loan_id"] is not None:
