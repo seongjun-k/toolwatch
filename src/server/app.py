@@ -100,6 +100,12 @@ def receive_frame():
                         due_str = reservation["due_str"]
                         due_epoch = reservation["due_epoch"]
                         state.state["reservations"].pop(attributed_uid, None)
+                    elif attributed_uid:
+                        # 카드 태그만으로는 대여가 아니다 — 학생 페이지에서 예약 확정(반납 기한 지정)이 있어야 정상 대여
+                        unauth = True
+                    if unauth:
+                        # 무단 반출은 실제로 누가 가져갔는지 알 수 없다 — 태그 UID를 붙이지 않고 관리자 화면에만 남긴다
+                        attributed_uid, name = None, ""
 
                     loan_id = db.insert_loan(conn, tool, attributed_uid or "", core.now_str(), unauth, snapshot_path, due_at=due_str)
                     db.add_event(conn, "OUT", tool, uid=attributed_uid or "", loan_id=loan_id, snapshot_path=snapshot_path)
@@ -107,7 +113,7 @@ def receive_frame():
                         # OUT 행은 그대로 두고 미확인 반출만 별도 행으로 추가 기록 (대시보드 이력에서 구분용)
                         # UNAUTH 행에는 직전 프레임을 연결 — OUT 행(감소 관측 장면)과 함께 이력에서 두 장 모두 열람 가능
                         db.add_event(conn, "UNAUTH", tool, uid=attributed_uid or "", loan_id=loan_id, snapshot_path=prev_path)
-                    if attributed_uid:
+                    if attributed_uid and not unauth:
                         tool_label = state.tool_label(tool)
                         pending_pushes.append((attributed_uid, f"{tool_label} 대여 처리됨"))
                     state.state["rented"].setdefault(tool, []).append({
@@ -141,6 +147,10 @@ def receive_frame():
                     sess = state.state["rfid_session"]
                     if sess and sess["uid"] in (item.get("uid"), return_uid):
                         state.state["rfid_session"] = None
+                    # 반납 확정 전(디바운스 대기 중)에 빼기 시작한 공구는 세션을 이미 스냅샷해 뒀다 — 그것도 소진
+                    for t, s_ in state.session_at_streak.items():
+                        if s_ and s_["uid"] in (item.get("uid"), return_uid):
+                            state.session_at_streak[t] = None
 
             state.state["rented"], overdue_events = core.check_overdue(state.state["rented"], CONFIG["overdue_sec"], now)
             for ev in overdue_events:

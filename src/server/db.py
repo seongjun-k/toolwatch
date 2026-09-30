@@ -175,9 +175,10 @@ def get_open_loans(conn):
 
 def get_loans_by_uid(conn, uid):
     """학생용(E2) 본인 대여 목록: 진행중+최근 반납 이력을 out_at 내림차순 최근 30건.
-    진행중/반납완료 분리는 호출부(app.py)에서 처리한다."""
+    진행중/반납완료 분리는 호출부(app.py)에서 처리한다.
+    무단 반출(unauth)은 태그 UID가 남아 있어도 대여가 아니므로 학생 화면에서 뺀다 (관리자 대시보드에서만 처리)."""
     return conn.execute(
-        "SELECT * FROM loans WHERE uid = ? ORDER BY out_at DESC LIMIT 30",
+        "SELECT * FROM loans WHERE uid = ? AND unauth = 0 ORDER BY out_at DESC LIMIT 30",
         (uid,),
     ).fetchall()
 
