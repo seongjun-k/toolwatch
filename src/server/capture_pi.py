@@ -70,7 +70,7 @@ while True:
     if key == 32:
         count += 1
         path = out_dir / f"{count:06d}.jpg"
-        cv2.imwrite(str(path), frame)
+        path.write_bytes(data)  # cv2.imwrite는 한글 경로에서 조용히 실패(False)해 Pi 원본 JPEG를 그대로 쓴다
         print(f"저장 {path.name}")
 
 proc.terminate()
