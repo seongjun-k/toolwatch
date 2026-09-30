@@ -8,7 +8,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
-from state import CONFIG, DB_PATH, client_ip, login_blocked, record_login_result, state, state_lock
+from state import CONFIG, DB_PATH, client_ip, login_blocked, record_login_result, state, state_lock, tool_label
 
 bp = Blueprint("student", __name__, url_prefix="/me")
 
@@ -112,7 +112,7 @@ def student_loans():
         now = time.time()
         tools = [
             {
-                "key": tool, "label": CONFIG.get("tool_labels", {}).get(tool, tool),
+                "key": tool, "label": tool_label(tool),
                 "available": max(0, registered - len(state["rented"].get(tool, []))),
             }
             for tool, registered in CONFIG["registered_stock"].items()
@@ -120,7 +120,7 @@ def student_loans():
         res = state["reservations"].get(uid)
         if res and res["expires_at"] > now:
             reservation = {
-                "tool_label": CONFIG.get("tool_labels", {}).get(res["tool"], res["tool"]),
+                "tool_label": tool_label(res["tool"]),
                 "remaining_sec": int(res["expires_at"] - now),
                 # 예약 전에 이미 태그해 둔 경우(카드를 대고 있다가 예약)에도 귀속에 쓰이는 세션이 살아 있으면 확인됨으로 본다
                 "tagged": res.get("tagged", False) or bool(
@@ -134,7 +134,7 @@ def student_loans():
         ret = state["returns"].get(uid)
         if ret and ret["expires_at"] > now:
             my_return = {
-                "tool_label": CONFIG.get("tool_labels", {}).get(ret["tool"], ret["tool"]),
+                "tool_label": tool_label(ret["tool"]),
                 "remaining_sec": int(ret["expires_at"] - now),
                 "tagged": ret["tagged"],
             }

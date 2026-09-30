@@ -83,12 +83,14 @@ def client_ip():
     return request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[-1].strip()
 
 
+def tool_label(tool):
+    return CONFIG.get("tool_labels", {}).get(tool, tool)
+
+
 def login_blocked(ip):
     with _login_fails_lock:
         entry = _login_fails.get(ip)
-        if entry is None:
-            return False
-        if entry["count"] < 5:
+        if entry is None or entry["count"] < 5:
             return False
         if time.time() >= entry["until"]:
             del _login_fails[ip]

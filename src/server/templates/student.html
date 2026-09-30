@@ -281,12 +281,12 @@
 
 <script>
 (function () {
-  // ---- 남은/초과 시간 표시: data-due(datetime-local 형식, 로컬 시간)를 1분 간격으로 갱신 ----
+  // ---- 남은/초과 시간 표시: data-due(datetime-local 형식, 로컬 시간)를 1초 간격으로 갱신 ----
   function fmtRemain(ms) {
     var abs = Math.abs(ms);
-    var totalMin = Math.floor(abs / 60000);
-    var h = Math.floor(totalMin / 60), m = totalMin % 60;
-    var body = (h > 0 ? h + '시간 ' : '') + m + '분';
+    var totalSec = Math.floor(abs / 1000);
+    var h = Math.floor(totalSec / 3600), m = Math.floor(totalSec / 60) % 60, s = totalSec % 60;
+    var body = (h > 0 ? h + '시간 ' : '') + m + '분 ' + s + '초';
     return ms >= 0 ? body + ' 남음' : body + ' 초과';
   }
   function updateCountdowns() {
@@ -300,7 +300,7 @@
     });
   }
   updateCountdowns();
-  setInterval(updateCountdowns, 60000);
+  setInterval(updateCountdowns, 1000);
 
   // 예약·반납 남은 초: 서버가 렌더한 값을 화면 로드 시각 기준으로 1초마다 줄인다 (서버·기기 시계 차 무관)
   function updateRemain() {

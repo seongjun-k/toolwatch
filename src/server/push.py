@@ -48,6 +48,7 @@ def select_reminders(loans, sent, now, morning_time, overdue_grace_sec=1800):
     sent: 이미 발송된 (loan_id, kind) 튜플 집합 (db.has_notice 대응).
     kind:
       - morning: due_at 날짜가 오늘이고 현재 시각이 morning_time 이후, 1회
+      - soon: due_at 5분 전 ~ due_at 사이, 1회 (60초 주기라 실제로는 4~5분 전 도착)
       - due: now >= due_at, 1회
       - overdue: due_at + overdue_grace_sec 경과해도 여전히 미반납, 1회
     """
@@ -68,6 +69,9 @@ def select_reminders(loans, sent, now, morning_time, overdue_grace_sec=1800):
             morning_at = due_at.replace(hour=morning_h, minute=morning_m, second=0, microsecond=0)
             if now >= morning_at and (loan_id, "morning") not in sent:
                 reminders.append((loan_id, uid, "morning", f"{tool} 오늘 반납 기한입니다"))
+
+        if due_at - timedelta(minutes=5) <= now < due_at and (loan_id, "soon") not in sent:
+            reminders.append((loan_id, uid, "soon", f"{tool} 반납 5분 전입니다 ({due_at:%H:%M}까지)"))
 
         if now >= due_at and (loan_id, "due") not in sent:
             reminders.append((loan_id, uid, "due", f"{tool} 반납 기한이 도래했습니다"))
@@ -103,6 +107,10 @@ def _selfcheck():
     now_overdue = dt(2026, 7, 17, 18, 31, 0)
     result4 = select_reminders(loans, sent={(1, "morning"), (1, "due")}, now=now_overdue, morning_time=morning_time)
     assert result4 == [(1, "U1", "overdue", "니퍼 반납이 지연되고 있습니다")], result4
+
+    # soon: due_at 5분 전 (morning 이미 발송됨)
+    result_soon = select_reminders(loans, sent={(1, "morning")}, now=dt(2026, 7, 17, 17, 56, 0), morning_time=morning_time)
+    assert result_soon == [(1, "U1", "soon", "니퍼 반납 5분 전입니다 (18:00까지)")], result_soon
 
     # 이미 overdue까지 발송됨 -> 더 이상 대상 아님
     result5 = select_reminders(

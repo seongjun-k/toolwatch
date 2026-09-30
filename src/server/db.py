@@ -65,18 +65,6 @@ def init_db(db_path):
     try:
         conn.executescript(SCHEMA)
         conn.commit()
-        # 기존 DB(구 스키마)에 student_id 컬럼이 없으면 추가 — 이미 있으면 예외 무시
-        try:
-            conn.execute("ALTER TABLE users ADD COLUMN student_id TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
-        # 기존 DB에 password_hash 컬럼이 없으면 추가 — 이미 있으면 예외 무시
-        try:
-            conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
         # 학번은 학생 로그인 키 — 중복 등록 차단 (NULL은 SQLite 유니크 인덱스에서 중복 허용)
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_id ON users(student_id)"
@@ -115,11 +103,10 @@ def get_user(conn, uid):
 
 def get_user_by_student(conn, student_id):
     """학번으로 사용자를 조회 (학생 로그인/계정생성용). 없으면 None."""
-    row = conn.execute(
+    return conn.execute(
         "SELECT uid, name, password_hash FROM users WHERE student_id = ?",
         (student_id,),
     ).fetchone()
-    return row if row else None
 
 
 def set_user_password(conn, uid, password_hash):

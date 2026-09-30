@@ -39,7 +39,7 @@ def dashboard():
             ]
             for tool, items in state["rented"].items()
         }
-        # 프레임 자체는 /live.jpg로 따로 받는다 — 1초마다 페이지를 갱신하는데 여기에 base64로 실으면
+        # 프레임 자체는 /live.mjpg로 따로 받는다 — 1초마다 페이지를 갱신하는데 여기에 base64로 실으면
         # 매 갱신마다 인코딩 비용과 수십~수백 KB 전송이 붙는다. 여기서는 표시 여부만 넘긴다.
         has_frame = bool(state["latest_frame_annot"] or state["latest_frame"])
         # 카드 등록 입력칸을 채우는 용도. Pi가 프레임마다 실어 보낸 UID를 서버가 이미 들고 있으므로
@@ -164,18 +164,6 @@ def control():
 @login_required  # 반출 증거 사진이라 파일명이 추측 가능해도 로그인 없이는 열람 불가해야 한다
 def snapshot_file(filename):
     return send_from_directory(SNAPSHOT_DIR, filename)
-
-
-@bp.route("/live.jpg")
-@login_required
-def live_frame():
-    """최신 프레임 1장을 JPEG 그대로 반환. 스냅샷 용도(디버깅·외부 도구)로 남겨둔다."""
-    with state_lock:
-        frame = state["latest_frame_annot"] or state["latest_frame"]
-    if not frame:
-        return "", 204
-    # no-store가 없으면 브라우저가 캐시해 화면이 멈춘 것처럼 보인다
-    return Response(frame, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @bp.route("/last_uid")

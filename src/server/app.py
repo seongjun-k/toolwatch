@@ -108,7 +108,7 @@ def receive_frame():
                         # UNAUTH 행에는 직전 프레임을 연결 — OUT 행(감소 관측 장면)과 함께 이력에서 두 장 모두 열람 가능
                         db.add_event(conn, "UNAUTH", tool, uid=attributed_uid or "", loan_id=loan_id, snapshot_path=prev_path)
                     if attributed_uid:
-                        tool_label = CONFIG.get("tool_labels", {}).get(tool, tool)
+                        tool_label = state.tool_label(tool)
                         pending_pushes.append((attributed_uid, f"{tool_label} 대여 처리됨"))
                     state.state["rented"].setdefault(tool, []).append({
                         "uid": attributed_uid or "", "name": name, "out_time": now, "due_at": due_epoch,
@@ -123,7 +123,7 @@ def receive_frame():
                         db.close_loan(conn, item["loan_id"], core.now_str())
                     db.add_event(conn, "IN", tool, uid=item.get("uid", ""), loan_id=item.get("loan_id"))
                     if item.get("uid"):
-                        tool_label = CONFIG.get("tool_labels", {}).get(tool, tool)
+                        tool_label = state.tool_label(tool)
                         pending_pushes.append((item["uid"], f"{tool_label} 반납 완료"))
                     # 정상 반납: 이 loan_id(또는 tool 일치)로 대기 중이던 반납 예약을 지운다
                     return_uid = next(
@@ -204,10 +204,10 @@ def reminder_loop():
                     open_loans = [dict(row) for row in db.get_open_loans(conn)]
                     for loan in open_loans:
                         # DB에는 영문 클래스명이 저장됨 — 알림 문구는 즉시 알림과 동일하게 한국어 라벨 사용
-                        loan["tool"] = CONFIG.get("tool_labels", {}).get(loan["tool"], loan["tool"])
+                        loan["tool"] = state.tool_label(loan["tool"])
                     sent = set()
                     for loan in open_loans:
-                        for kind in ("morning", "due", "overdue"):
+                        for kind in ("morning", "soon", "due", "overdue"):
                             if db.has_notice(conn, loan["id"], kind):
                                 sent.add((loan["id"], kind))
                     reminders = push.select_reminders(
@@ -385,33 +385,7 @@ def _selfcheck():
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    # --- E3: 아침/기한/연체 리마인더 선별 (각 1건) + 중복 방지 + due_at 없는 loan 제외 ---
-    reminder_loans = [
-        {"id": 10, "uid": "U1", "tool": "니퍼", "due_at": "2026-07-17 18:00:00"},
-        {"id": 11, "uid": "U2", "tool": "펜치", "due_at": None},  # 기한 미설정 -> 대상 아님
-    ]
-    morning_reminders = push.select_reminders(
-        reminder_loans, sent=set(), now=datetime(2026, 7, 17, 9, 30, 0), morning_time="09:00"
-    )
-    assert morning_reminders == [(10, "U1", "morning", "니퍼 오늘 반납 기한입니다")], morning_reminders
-
-    due_reminders = push.select_reminders(
-        reminder_loans, sent={(10, "morning")}, now=datetime(2026, 7, 17, 18, 0, 0), morning_time="09:00"
-    )
-    assert due_reminders == [(10, "U1", "due", "니퍼 반납 기한이 도래했습니다")], due_reminders
-
-    overdue_reminders = push.select_reminders(
-        reminder_loans, sent={(10, "morning"), (10, "due")},
-        now=datetime(2026, 7, 17, 18, 31, 0), morning_time="09:00",
-    )
-    assert overdue_reminders == [(10, "U1", "overdue", "니퍼 반납이 지연되고 있습니다")], overdue_reminders
-
-    # 이미 전부 발송됨 -> 재선별 안 됨
-    no_reminders = push.select_reminders(
-        reminder_loans, sent={(10, "morning"), (10, "due"), (10, "overdue")},
-        now=datetime(2026, 7, 17, 18, 31, 0), morning_time="09:00",
-    )
-    assert no_reminders == [], no_reminders
+    push._selfcheck()
 
     # --- /frame·로그인 라우트 통합 확인 (YOLO 추론 경로는 타지 않는 케이스만) ---
     client = app.test_client()
