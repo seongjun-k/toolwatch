@@ -33,15 +33,10 @@ def _set_light(color: str) -> None:
 
 def _set_buzzer(pattern: str) -> None:
     """buzzer: off|overdue|unauth.
-    overdue=연속음(on), unauth=단속음(blink). blink(background=True)는 별도 스레드로 비블로킹
-    동작하므로 메인 루프의 3초 주기 캡처/전송을 막지 않는다."""
+    부저 소자에 단속 회로가 내장돼 있어 on()만 하면 단속음이 난다 — 패턴 구분 없이 on/off만 한다.
+    그래서 overdue와 unauth는 소리로 구분되지 않고 경광등 색으로만 구분된다."""
     buzzer = _devices["buzzer"]
-    if pattern == "overdue":
-        buzzer.on()
-    elif pattern == "unauth":
-        buzzer.blink(on_time=0.3, off_time=0.3, background=True)
-    else:
-        buzzer.off()
+    (buzzer.on if pattern != "off" else buzzer.off)()
 
 
 def apply(light: str, buzzer: str) -> None:
