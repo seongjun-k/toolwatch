@@ -6,6 +6,7 @@ RFID(RC522) 폴링은 별도 스레드 1개로 돌리며, 최근 태그 UID를 �
 """
 import io
 import json
+import signal
 import threading
 import time
 from pathlib import Path
@@ -70,6 +71,10 @@ def _capture_jpeg(camera: Picamera2) -> bytes:
 
 
 def run() -> None:
+    # kill(SIGTERM)과, 백그라운드로 띄운 프로세스가 물려받는 SIGINT 무시 상태에서도 finally의 hw.close()가
+    # 돌도록 둘 다 KeyboardInterrupt로 통일한다. 안 그러면 종료 시 릴레이가 켜진 채 남아 경광등·부저가 계속 켜진다
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, signal.default_int_handler)
     with open(CONFIG_PATH, encoding="utf-8") as f:
         config = json.load(f)
     hw.init(config["relay_pins"])
