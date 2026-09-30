@@ -122,7 +122,10 @@ def student_loans():
             reservation = {
                 "tool_label": CONFIG.get("tool_labels", {}).get(res["tool"], res["tool"]),
                 "remaining_sec": int(res["expires_at"] - now),
-                "tagged": res.get("tagged", False),
+                # 예약 전에 이미 태그해 둔 경우(카드를 대고 있다가 예약)에도 귀속에 쓰이는 세션이 살아 있으면 확인됨으로 본다
+                "tagged": res.get("tagged", False) or bool(
+                    state["rfid_session"] and state["rfid_session"]["uid"] == uid and state["rfid_session"]["expires_at"] > now
+                ),
             }
         else:
             reservation = None
