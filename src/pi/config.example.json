@@ -7,10 +7,10 @@
     720
   ],
   "relay_pins": {
-    "red": 5,
-    "yellow": 6,
-    "green": 13,
-    "buzzer": 19
+    "red": 19,
+    "yellow": 13,
+    "green": 26,
+    "buzzer": 5
   },
   "frame_token": "CHANGE-ME"
 }
