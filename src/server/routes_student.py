@@ -122,6 +122,7 @@ def student_loans():
             reservation = {
                 "tool_label": CONFIG.get("tool_labels", {}).get(res["tool"], res["tool"]),
                 "remaining_sec": int(res["expires_at"] - now),
+                "tagged": res.get("tagged", False),
             }
         else:
             reservation = None
@@ -195,6 +196,7 @@ def student_reserve():
             "due_epoch": due_epoch,
             "due_str": datetime.fromtimestamp(due_epoch).strftime("%Y-%m-%d %H:%M:%S"),
             "expires_at": time.time() + 60,
+            "tagged": False,
         }
     return redirect(url_for("student.student_loans"))
 

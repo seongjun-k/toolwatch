@@ -1,14 +1,13 @@
 """toolwatch 관리자 라우트 (S1~S5, E1). 대시보드 조회·로그인·제어·스냅샷 열람."""
 import sqlite3
 import time
-from datetime import datetime
 from functools import wraps
 
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 
 import db
 import push
-from state import CONFIG, DB_PATH, ROOT_DIR, SNAPSHOT_DIR, VAPID_KEY_PATH, client_ip, debounce_state, login_blocked, record_login_result, save_config, state, state_lock
+from state import CONFIG, DB_PATH, SNAPSHOT_DIR, VAPID_KEY_PATH, client_ip, debounce_state, login_blocked, record_login_result, save_config, state, state_lock
 
 bp = Blueprint("admin", __name__)
 
@@ -64,8 +63,6 @@ def dashboard():
             last_updated=state["last_updated"],
             config=CONFIG,
             users_full=users_full,
-            collecting=state["collecting"],
-            collect_count=state["collect_count"],
         )
 
 
@@ -150,15 +147,6 @@ def control():
                 # 비밀번호 분실 대응: 해시를 비워 두면 학생이 "계정 생성"으로 다시 설정한다
                 db.set_user_password(conn, request.form.get("uid", ""), None)
                 flash("비밀번호를 초기화했습니다 — 학생이 '계정 생성'으로 재설정하면 됩니다")
-            elif action == "collect_start":
-                session_dir = ROOT_DIR / "dataset" / "raw" / datetime.now().strftime("%Y%m%d_%H%M%S")
-                session_dir.mkdir(parents=True, exist_ok=True)
-                state["collecting"] = True
-                state["collect_dir"] = session_dir
-                state["collect_count"] = 0
-                state["collect_last_size"] = 0
-            elif action == "collect_stop":
-                state["collecting"] = False
             elif action == "uid_assign":
                 old_uid = request.form.get("old_uid", "")
                 new_uid = request.form.get("new_uid", "").strip()

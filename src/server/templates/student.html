@@ -185,7 +185,7 @@
           <div class="row-top">
             <span class="tool-name">{{ reservation.tool_label }} 예약됨</span>
           </div>
-          <div class="meta">{{ reservation.remaining_sec }}초 안에 카드를 태그하세요</div>
+          <div class="meta">{% if reservation.tagged %}카드 확인됨 — 공구를 거치대에서 빼세요 (<span class="remain">{{ reservation.remaining_sec }}</span>초){% else %}<span class="remain">{{ reservation.remaining_sec }}</span>초 안에 카드를 태그하세요{% endif %}</div>
           <form class="due-form" method="post" action="{{ url_for('student.student_reserve_cancel') }}">
             <button type="submit">예약 취소</button>
           </form>
@@ -241,7 +241,7 @@
             {% if my_return.tagged %}
               <div class="meta">공구 인식 대기 중…</div>
             {% else %}
-              <div class="meta">카드를 태그하고 공구를 거치대에 걸어주세요 ({{ my_return.remaining_sec }}초)</div>
+              <div class="meta">카드를 태그하고 공구를 거치대에 걸어주세요 (<span class="remain">{{ my_return.remaining_sec }}</span>초)</div>
             {% endif %}
             <form class="due-form" method="post" action="{{ url_for('student.student_return_cancel') }}">
               <button type="submit">취소</button>
@@ -301,6 +301,16 @@
   }
   updateCountdowns();
   setInterval(updateCountdowns, 60000);
+
+  // 예약·반납 남은 초: 서버가 렌더한 값을 화면 로드 시각 기준으로 1초마다 줄인다 (서버·기기 시계 차 무관)
+  function updateRemain() {
+    document.querySelectorAll('.remain').forEach(function (el) {
+      if (!el.dataset.end) el.dataset.end = Date.now() + (parseInt(el.textContent, 10) || 0) * 1000;
+      el.textContent = Math.max(0, Math.ceil((el.dataset.end - Date.now()) / 1000));
+    });
+  }
+  updateRemain();
+  setInterval(updateRemain, 1000);
 
   // ---- 상태 변화 배너 ----
   var baseTitle = document.title;
@@ -362,8 +372,9 @@
 
   function refresh() {
     var current = document.getElementById('live');
-    if (current.contains(document.activeElement) && document.activeElement !== document.body) {
-      return; // 입력 중(대여하기 시각 입력 등)에는 이번 갱신을 건너뛴다
+    var ae = document.activeElement;
+    if (current.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) {
+      return; // 입력 중(대여하기 시각 입력 등)에는 이번 갱신을 건너뛴다. 버튼 포커스는 갱신을 막지 않는다
     }
     fetch(window.location.href, { credentials: 'same-origin' })
       .then(function (res) { if (!res.ok) return null; return res.text(); })
@@ -401,6 +412,7 @@
         curr.replaceWith(fresh);
         live = document.getElementById('live');
         updateCountdowns();
+        updateRemain();
       })
       .catch(function () { /* 네트워크 오류 시 직전 화면 유지 */ });
   }

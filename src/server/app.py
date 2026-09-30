@@ -59,6 +59,11 @@ def receive_frame():
             if uid and uid in state.state["returns"] and state.state["returns"][uid]["expires_at"] > now:
                 state.state["returns"][uid]["tagged"] = True
 
+            # 예약 중인 학생이 카드를 태그했으면 표시 (학생 화면 안내용, 귀속 판정은 rfid_session이 담당)
+            reservation_tag = state.state["reservations"].get(uid) if uid else None
+            if reservation_tag and reservation_tag["expires_at"] > now:
+                reservation_tag["tagged"] = True
+
             new_debounce_state, events = core.judge_tools(
                 detected_counts, CONFIG["registered_stock"], CONFIG["debounce_frames"], state.debounce_state
             )
@@ -149,7 +154,6 @@ def receive_frame():
         state.state["latest_frame"] = frame_bytes
         state.state["latest_frame_annot"] = annotated_frame  # 대시보드 표시 전용, 반출 증거 스냅샷은 원본(latest_frame)만 사용
         state.state["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        core.save_collect_frame(frame_bytes)  # 데이터 수집 모드 — 판정 흐름 밖, 저장만
         state.state["tool_status"] = {
             tool: {
                 "registered": registered,
