@@ -36,3 +36,7 @@ src/pi/config.json
 
 # DB 스냅샷 백업 (run_server.bat 기동 시 생성)
 backups/
+
+# 개인정보(학번·이름)·내부 주소가 들어간 문서 — 원격에 올리지 않는다 (공개 저장소)
+docs/개발계획서(*
+docs/Pi5-이관계획.md
